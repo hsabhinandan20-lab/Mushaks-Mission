@@ -15,6 +15,9 @@ export default class GameScene extends Phaser.Scene {
 
   create() {
     this.currentMission = 1;
+    this.doorActive = false;
+    this.isPromptOpen = false;
+    this.isFading = false;
 
     // 1. Static physics group for solid obstacles (house, roof, shrine, trees, rocks, logs, lamps, crate, fences)
     this.obstacles = this.physics.add.staticGroup();
@@ -27,15 +30,17 @@ export default class GameScene extends Phaser.Scene {
     const height = this.scale.height;
     this.physics.world.setBounds(0, 0, width, height);
 
-    // 4. Create background map image & collision obstacles
+    // 4. Create background map image, entrance trigger & collision obstacles
     this.createBackground();
+    this.createDoorTrigger();
     this.createObstacles();
 
     // 5. Create Mushak (the player)
     this.createPlayer();
 
-    // 6. Setup ingredient data registry & top-left UI
+    // 6. Setup ingredient data registry, top-left UI & interaction prompt overlay
     this.createUI();
+    this.createPromptUI();
 
     // 7. Spawn collectible ingredients (Flowers and Durva)
     this.createCollectibles();
@@ -46,11 +51,26 @@ export default class GameScene extends Phaser.Scene {
     // 9. Enable generic overlap handler for collecting ingredients
     this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
 
-    // 10. Set up keyboard movement controls (WASD + Arrow Keys)
+    // 10. Enable door trigger overlap handler
+    this.physics.add.overlap(this.player, this.doorTrigger, this.onDoorOverlap, null, this);
+
+    // 11. Set up keyboard movement controls (WASD + Arrow Keys + Enter/Space)
     this.setupControls();
 
-    // 11. Listen for real-time window resize events
+    // 12. Listen for real-time window resize events
     this.scale.on('resize', this.handleResize, this);
+
+    // 13. Listen for scene wake when returning from HouseScene
+    this.events.on('wake', () => {
+      this.cameras.main.fadeIn(700, 0, 0, 0);
+      this.isFading = false;
+      this.isPromptOpen = false;
+      if (this.promptContainer) this.promptContainer.setVisible(false);
+      if (this.doorMarker) this.doorMarker.setVisible(true);
+      if (this.objectiveText) this.objectiveText.setText('Go to the door to enter the house 🏠');
+      const doorPos = this.getMapScreenPos(836, 860);
+      this.player.setPosition(doorPos.x, doorPos.y);
+    });
   }
 
   createBackground() {
@@ -76,10 +96,110 @@ export default class GameScene extends Phaser.Scene {
     return { x, y, scale };
   }
 
+  createDoorTrigger() {
+    const doorPos = this.getMapScreenPos(836, 830);
+
+    // Glowing/pulsing yellow door marker
+    this.doorMarker = this.add.circle(doorPos.x, doorPos.y, 22 * doorPos.scale, 0xFFD700, 0.7);
+    this.doorMarker.setStrokeStyle(3, 0xFFFFFF);
+    this.doorMarker.setVisible(false);
+
+    this.tweens.add({
+      targets: this.doorMarker,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      alpha: 0.4,
+      duration: 750,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    // Physics trigger rectangle positioned over doorway
+    this.doorTrigger = this.add.rectangle(doorPos.x, doorPos.y, 70 * doorPos.scale, 40 * doorPos.scale, 0x000000, 0);
+    this.physics.add.existing(this.doorTrigger, true);
+  }
+
+  createPromptUI() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.promptContainer = this.add.container(width / 2, height / 2);
+
+    const box = this.add.rectangle(0, 0, 320, 150, 0x1a1a2e, 0.95);
+    box.setStrokeStyle(3, 0xFFD700);
+
+    const title = this.add.text(0, -35, 'Enter the house? 🏠', {
+      fontSize: '22px',
+      fontFamily: 'Segoe UI, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFD700',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const subtext = this.add.text(0, 5, 'Press ENTER or SPACE', {
+      fontSize: '16px',
+      fontFamily: 'Segoe UI, sans-serif',
+      fill: '#FFFFFF',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const btn = this.add.rectangle(0, 45, 140, 34, 0xFFD700, 1);
+    btn.setInteractive({ useHandCursor: true });
+
+    const btnText = this.add.text(0, 45, 'Enter ➔', {
+      fontSize: '16px',
+      fontFamily: 'Segoe UI, sans-serif',
+      fontStyle: 'bold',
+      fill: '#1a1a2e'
+    }).setOrigin(0.5);
+
+    this.promptContainer.add([box, title, subtext, btn, btnText]);
+    this.promptContainer.setDepth(100);
+    this.promptContainer.setVisible(false);
+
+    btn.on('pointerdown', () => this.confirmEnterHouse());
+    box.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirmEnterHouse());
+  }
+
+  onDoorOverlap() {
+    if (this.doorActive && !this.isPromptOpen && !this.isFading) {
+      this.isPromptOpen = true;
+      this.player.setVelocity(0, 0);
+      this.player.anims.stop();
+
+      const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
+      this.player.setFrame(idleFrames[this.lastDirection || 'down']);
+
+      if (this.promptContainer) {
+        this.promptContainer.setPosition(this.scale.width / 2, this.scale.height / 2);
+        this.promptContainer.setVisible(true);
+      }
+    }
+  }
+
+  confirmEnterHouse() {
+    if (!this.isPromptOpen || this.isFading) return;
+    this.isFading = true;
+
+    if (this.promptContainer) {
+      this.promptContainer.setVisible(false);
+    }
+
+    this.cameras.main.fadeOut(700, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.isPromptOpen = false;
+      this.scene.sleep('GameScene');
+      this.scene.start('HouseScene');
+    });
+  }
+
   createObstacles() {
     this.obstacleDefinitions = [
-      // 1. HOUSE (Entire Building & Roof Block)
-      { type: 'rect', category: 'house', origX: 836, origY: 720, origW: 390, origH: 260, name: 'House Building & Entire Roof' },
+      // 1. HOUSE (Roof, Chimney, Left Wall & Right Wall flanking central doorway)
+      { type: 'rect', category: 'house', origX: 836, origY: 665, origW: 390, origH: 150, name: 'House Roof & Chimney' },
+      { type: 'rect', category: 'house', origX: 715, origY: 750, origW: 145, origH: 170, name: 'House Left Wall' },
+      { type: 'rect', category: 'house', origX: 957, origY: 750, origW: 145, origH: 170, name: 'House Right Wall' },
 
       // 2. WOODEN CRATE / BOX (Left Side of House)
       { type: 'rect', category: 'crate', origX: 605, origY: 825, origW: 50, origH: 50, name: 'Wooden Crate Left' },
@@ -393,6 +513,13 @@ export default class GameScene extends Phaser.Scene {
       } else if (type === 'durva') {
         this.bannerText.setText('Durva collected!\nBappa needs Bananas next! 🍌');
         this.bannerText.setVisible(true);
+
+        this.time.delayedCall(2000, () => {
+          this.bannerText.setVisible(false);
+          this.objectiveText.setText('Go to the door to enter the house 🏠');
+          this.doorActive = true;
+          if (this.doorMarker) this.doorMarker.setVisible(true);
+        });
       }
     }
   }
@@ -438,9 +565,25 @@ export default class GameScene extends Phaser.Scene {
     // 4. Update Collectible Positions
     this.updateCollectiblesPositions();
 
-    // 5. Update Central Victory Banner
+    // 5. Update Door Trigger & Marker Position & Size
+    if (this.doorTrigger) {
+      const doorPos = this.getMapScreenPos(836, 830);
+      this.doorTrigger.setPosition(doorPos.x, doorPos.y);
+      this.doorTrigger.setSize(70 * doorPos.scale, 40 * doorPos.scale);
+      if (this.doorTrigger.body) this.doorTrigger.body.updateFromGameObject();
+
+      if (this.doorMarker) {
+        this.doorMarker.setPosition(doorPos.x, doorPos.y);
+        this.doorMarker.setRadius(22 * doorPos.scale);
+      }
+    }
+
+    // 6. Update Banners & Prompts
     if (this.bannerText) {
       this.bannerText.setPosition(width / 2, height / 2);
+    }
+    if (this.promptContainer) {
+      this.promptContainer.setPosition(width / 2, height / 2);
     }
   }
 
@@ -452,9 +595,25 @@ export default class GameScene extends Phaser.Scene {
       down: Phaser.Input.Keyboard.KeyCodes.S,
       right: Phaser.Input.Keyboard.KeyCodes.D
     });
+
+    this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    this.enterKey.on('down', () => {
+      if (this.isPromptOpen) this.confirmEnterHouse();
+    });
+
+    this.spaceKey.on('down', () => {
+      if (this.isPromptOpen) this.confirmEnterHouse();
+    });
   }
 
   update() {
+    if (this.isPromptOpen || this.isFading) {
+      this.player.setVelocity(0, 0);
+      return;
+    }
+
     const speed = 250;
 
     let vx = 0;
