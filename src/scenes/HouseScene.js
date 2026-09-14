@@ -13,6 +13,129 @@ export default class HouseScene extends Phaser.Scene {
       });
     }
     this.load.image('house_map', 'assets/house.png');
+    this.load.text('collision_tmx', 'assets/collision.tmx');
+  }
+
+  parseTiledCollisionMap() {
+    let offsetX = 32;
+    let offsetY = 20;
+
+    let content = '';
+    if (this.cache.text && this.cache.text.exists('collision_tmx')) {
+      content = this.cache.text.get('collision_tmx');
+    }
+
+    const objects = [];
+
+    if (content) {
+      try {
+        const parser = new window.DOMParser();
+        const xmlDoc = parser.parseFromString(content, 'text/xml');
+
+        // Read imagelayer offset
+        const imgLayer = xmlDoc.querySelector('imagelayer[name="House Background"]') || xmlDoc.querySelector('imagelayer');
+        if (imgLayer) {
+          if (imgLayer.hasAttribute('offsetx')) {
+            offsetX = parseFloat(imgLayer.getAttribute('offsetx'));
+          }
+          if (imgLayer.hasAttribute('offsety')) {
+            offsetY = parseFloat(imgLayer.getAttribute('offsety'));
+          }
+        }
+
+        // Read Collision objectgroup
+        const collisionGroup = xmlDoc.querySelector('objectgroup[name="Collision"]') ||
+          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'Collision');
+
+        if (collisionGroup) {
+          const objElements = Array.from(collisionGroup.getElementsByTagName('object'));
+
+          objElements.forEach(objEl => {
+            const id = parseInt(objEl.getAttribute('id') || '0');
+            let rawX = parseFloat(objEl.getAttribute('x') || '0');
+            let rawY = parseFloat(objEl.getAttribute('y') || '0');
+            let rawW = parseFloat(objEl.getAttribute('width') || '0');
+            let rawH = parseFloat(objEl.getAttribute('height') || '0');
+
+            const polyEl = objEl.querySelector('polygon');
+            if (polyEl) {
+              const ptsAttr = polyEl.getAttribute('points') || '';
+              const pts = ptsAttr.trim().split(/\s+/).map(p => p.split(',').map(Number));
+              let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+              pts.forEach(([px, py]) => {
+                if (px < minX) minX = px;
+                if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                if (py > maxY) maxY = py;
+              });
+              rawX += minX;
+              rawY += minY;
+              rawW = maxX - minX;
+              rawH = maxY - minY;
+            }
+
+            if (rawW > 0 && rawH > 0) {
+              // Account for imagelayer offset (32, 20)
+              const imgX = rawX - offsetX;
+              const imgY = rawY - offsetY;
+
+              // Center of rectangle in house.png (1672x941) coordinate space
+              const origX = imgX + rawW / 2;
+              const origY = imgY + rawH / 2;
+
+              objects.push({
+                id,
+                name: `TMX Object #${id}`,
+                origX,
+                origY,
+                origW: rawW,
+                origH: rawH
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('DOMParser failed to parse TMX XML:', err);
+      }
+    }
+
+    return objects;
+  }
+
+  createObstacles() {
+    this.debugColliders = false;
+    this.obstacleObjects = [];
+
+    // Parse TMX XML objects directly from collision.tmx using DOMParser
+    const tmxObjects = this.parseTiledCollisionMap();
+
+    tmxObjects.forEach(def => {
+      const pos = this.getMapScreenPos(def.origX, def.origY);
+      const gameObject = this.add.rectangle(
+        pos.x, pos.y,
+        def.origW * pos.scale, def.origH * pos.scale,
+        0xFF0000, this.debugColliders ? 0.4 : 0
+      );
+      if (this.debugColliders) {
+        gameObject.setStrokeStyle(2, 0xFF0000, 0.9);
+      }
+      this.physics.add.existing(gameObject, true);
+
+      gameObject.obstacleDef = def;
+      this.obstacles.add(gameObject);
+      this.obstacleObjects.push(gameObject);
+    });
+
+    // F2 Key listener to toggle visual debug mode live
+    if (this.input.keyboard) {
+      this.input.keyboard.on('keydown-F2', () => {
+        this.debugColliders = !this.debugColliders;
+        this.obstacleObjects.forEach(obj => {
+          obj.setFillStyle(0xFF0000, this.debugColliders ? 0.4 : 0);
+          obj.setStrokeStyle(this.debugColliders ? 2 : 0, 0xFF0000, 0.9);
+        });
+      });
+    }
   }
 
   create() {
@@ -88,58 +211,6 @@ export default class HouseScene extends Phaser.Scene {
     return { x, y, scale };
   }
 
-  createObstacles() {
-    this.obstacleDefinitions = [
-      // 1. OUTER WALLS (Top, Left, Right, Bottom Left, Bottom Right)
-      { type: 'rect', origX: 836, origY: 60, origW: 1672, origH: 120, name: 'Top Wall Border' },
-      { type: 'rect', origX: 30, origY: 470, origW: 60, origH: 941, name: 'Left Wall' },
-      { type: 'rect', origX: 1642, origY: 470, origW: 60, origH: 941, name: 'Right Wall' },
-      { type: 'rect', origX: 300, origY: 925, origW: 540, origH: 35, name: 'Bottom Wall Left' },
-      { type: 'rect', origX: 1370, origY: 925, origW: 540, origH: 35, name: 'Bottom Wall Right' },
-
-      // 2. ENTRANCE PILLARS & PLANTS (Full width including leaves)
-      { type: 'rect', origX: 630, origY: 885, origW: 130, origH: 110, name: 'Left Pillar & Potted Plant' },
-      { type: 'rect', origX: 1040, origY: 885, origW: 130, origH: 110, name: 'Right Pillar & Potted Plant' },
-
-      // 3. KITCHEN GREY STOVE / SLAB (Extended full slab area)
-      { type: 'rect', origX: 280, origY: 275, origW: 330, origH: 140, name: 'Kitchen Stove & Grey Slab' },
-      { type: 'rect', origX: 280, origY: 130, origW: 240, origH: 60, name: 'Kitchen Wall Shelf' },
-
-      // 4. GANESHA SHRINE (Top-Center)
-      { type: 'rect', origX: 836, origY: 200, origW: 300, origH: 140, name: 'Ganesha Shrine Altar' },
-
-      // 5. KITCHEN SHELVES & TALL WARDROBE (Top-Right)
-      { type: 'rect', origX: 1180, origY: 200, origW: 230, origH: 130, name: 'Kitchen Storage Shelves' },
-      { type: 'rect', origX: 1325, origY: 240, origW: 60, origH: 80, name: 'Small Plant Table' },
-      { type: 'rect', origX: 1470, origY: 200, origW: 140, origH: 170, name: 'Tall Storage Wardrobe' },
-      { type: 'rect', origX: 1520, origY: 270, origW: 80, origH: 100, name: 'Top Right Potted Plant' },
-
-      // 6. DINING TABLE & BENCHES (Extended to cover entire table set)
-      { type: 'rect', origX: 285, origY: 510, origW: 360, origH: 190, name: 'Dining Table, Benches & Stool' },
-
-      // 7. BED / COT & NIGHTSTAND ONLY (Excludes sleeping mat to the left)
-      { type: 'rect', origX: 1500, origY: 560, origW: 160, origH: 220, name: 'Bed Cot & Side Table' },
-
-      // 8. BOTTOM-LEFT FURNITURE (Plant, chest & jar, excludes bottom-left carpet)
-      { type: 'rect', origX: 115, origY: 770, origW: 170, origH: 200, name: 'Bottom Left Pots & Cabinet' },
-
-      // 9. BOTTOM-RIGHT FURNITURE (Nightstand & plant, excludes bottom-right carpet)
-      { type: 'rect', origX: 1560, origY: 820, origW: 120, origH: 150, name: 'Bottom Right Nightstand & Plant' }
-    ];
-
-    this.obstacleObjects = [];
-
-    this.obstacleDefinitions.forEach(def => {
-      const pos = this.getMapScreenPos(def.origX, def.origY);
-      const gameObject = this.add.rectangle(pos.x, pos.y, def.origW * pos.scale, def.origH * pos.scale, 0x000000, 0);
-      this.physics.add.existing(gameObject, true);
-
-      gameObject.obstacleDef = def;
-      this.obstacles.add(gameObject);
-      this.obstacleObjects.push(gameObject);
-    });
-  }
-
   updateObstaclesPositions() {
     this.obstacleObjects.forEach(obj => {
       const def = obj.obstacleDef;
@@ -205,7 +276,8 @@ export default class HouseScene extends Phaser.Scene {
       this.player.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
     this.player.setCollideWorldBounds(true);
-    this.player.body.setCircle(60, 68, 68);
+    // Align player body circle with Mushak's feet/base (radius 45, offset X 83, offset Y 140)
+    this.player.body.setCircle(45, 83, 140);
 
     this.lastDirection = 'up';
   }
@@ -254,17 +326,17 @@ export default class HouseScene extends Phaser.Scene {
     // Generate crisp 28x28 pixel banana texture
     if (!this.textures.exists('collectible_banana')) {
       const g = this.make.graphics({ x: 0, y: 0, add: false });
-      
+
       // Outer peel (bright yellow curved shape)
       g.fillStyle(0xFFD700, 1);
       g.fillCircle(14, 14, 10);
       g.fillStyle(0x332200, 1); // inner cut-out for crescent curve
       g.fillCircle(10, 10, 8);
-      
+
       // Restore yellow body
       g.fillStyle(0xFFEB3B, 1);
       g.fillCircle(15, 15, 7);
-      
+
       // Stem / tips (green/brown)
       g.fillStyle(0x4AF0300, 1);
       g.fillRect(20, 6, 4, 4);
