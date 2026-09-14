@@ -5,6 +5,13 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
+  preload() {
+    this.load.spritesheet('mushak', 'assets/mushak.png', {
+      frameWidth: 256,
+      frameHeight: 256
+    });
+  }
+
   create() {
     this.currentMission = 1;
 
@@ -216,28 +223,54 @@ export default class GameScene extends Phaser.Scene {
 
   createPlayer() {
     const width = this.scale.width;
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
-    
-    // Body
-    graphics.fillStyle(0x999999, 1);
-    graphics.fillCircle(16, 16, 14);
 
-    // Ears
-    graphics.fillStyle(0xFFB6C1, 1);
-    graphics.fillCircle(8, 8, 5);
-    graphics.fillCircle(24, 8, 5);
+    // Create 4 walking animations with a smooth 6 fps rate
+    if (!this.anims.exists('mushak-down')) {
+      this.anims.create({
+        key: 'mushak-down',
+        frames: this.anims.generateFrameNumbers('mushak', { start: 0, end: 3 }),
+        frameRate: 6,
+        repeat: -1
+      });
+    }
 
-    // Nose
-    graphics.fillStyle(0x333333, 1);
-    graphics.fillCircle(16, 24, 3);
+    if (!this.anims.exists('mushak-up')) {
+      this.anims.create({
+        key: 'mushak-up',
+        frames: this.anims.generateFrameNumbers('mushak', { start: 4, end: 7 }),
+        frameRate: 6,
+        repeat: -1
+      });
+    }
 
-    graphics.generateTexture('mushak', 32, 32);
-    graphics.destroy();
+    if (!this.anims.exists('mushak-left')) {
+      this.anims.create({
+        key: 'mushak-left',
+        frames: this.anims.generateFrameNumbers('mushak', { start: 8, end: 11 }),
+        frameRate: 6,
+        repeat: -1
+      });
+    }
 
-    // Spawn Mushak on central pathway at (width / 2, 180)
-    this.player = this.physics.add.sprite(width / 2, 180, 'mushak');
+    if (!this.anims.exists('mushak-right')) {
+      this.anims.create({
+        key: 'mushak-right',
+        frames: this.anims.generateFrameNumbers('mushak', { start: 12, end: 15 }),
+        frameRate: 6,
+        repeat: -1
+      });
+    }
+
+    // Spawn single Mushak sprite facing down
+    this.player = this.physics.add.sprite(width / 2, 180, 'mushak', 0);
+    this.player.setScale(0.24);
+    if (this.player.texture) {
+      this.player.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
     this.player.setCollideWorldBounds(true);
-    this.player.body.setCircle(14, 2, 2);
+    this.player.body.setCircle(60, 68, 68);
+
+    this.lastDirection = 'down';
   }
 
   createUI() {
@@ -516,20 +549,48 @@ export default class GameScene extends Phaser.Scene {
   update() {
     const speed = 250;
 
-    this.player.setVelocity(0, 0);
+    let vx = 0;
+    let vy = 0;
 
-    if (this.cursors.left.isDown || this.wasd.left.isDown) {
-      this.player.setVelocityX(-speed);
-    } else if (this.cursors.right.isDown || this.wasd.right.isDown) {
-      this.player.setVelocityX(speed);
+    if (this.cursors.left.isDown || this.wasd.left.isDown) vx -= 1;
+    if (this.cursors.right.isDown || this.wasd.right.isDown) vx += 1;
+    if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= 1;
+    if (this.cursors.down.isDown || this.wasd.down.isDown) vy += 1;
+
+    if (vx !== 0 || vy !== 0) {
+      let animKey = 'mushak-down';
+      let dir = 'down';
+
+      if (vx < 0) {
+        animKey = 'mushak-left';
+        dir = 'left';
+      } else if (vx > 0) {
+        animKey = 'mushak-right';
+        dir = 'right';
+      } else if (vy < 0) {
+        animKey = 'mushak-up';
+        dir = 'up';
+      } else if (vy > 0) {
+        animKey = 'mushak-down';
+        dir = 'down';
+      }
+
+      this.player.anims.play(animKey, true);
+      this.lastDirection = dir;
+
+      const vec = new Phaser.Math.Vector2(vx, vy).normalize().scale(speed);
+      this.player.setVelocity(vec.x, vec.y);
+    } else {
+      this.player.setVelocity(0, 0);
+      this.player.anims.stop();
+
+      const idleFrames = {
+        down: 0,
+        up: 4,
+        left: 8,
+        right: 12
+      };
+      this.player.setFrame(idleFrames[this.lastDirection || 'down']);
     }
-
-    if (this.cursors.up.isDown || this.wasd.up.isDown) {
-      this.player.setVelocityY(-speed);
-    } else if (this.cursors.down.isDown || this.wasd.down.isDown) {
-      this.player.setVelocityY(speed);
-    }
-
-    this.player.body.velocity.normalize().scale(speed);
   }
 }
