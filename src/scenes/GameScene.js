@@ -11,6 +11,7 @@ export default class GameScene extends Phaser.Scene {
       frameHeight: 256
     });
     this.load.image('garden_map', 'assets/garden_map.png');
+    this.load.text('garden_collision_tmx', 'assets/GardenCollision.tmx');
     this.load.image('dialogueBox', 'assets/dialogue_box.png');
     this.load.image('dialogueBoy', 'assets/dialogue_boy.png');
   }
@@ -220,63 +221,127 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  parseTiledCollisionMap() {
+    let offsetX = 433;
+    let offsetY = 131;
+
+    let content = '';
+    if (this.cache.text && this.cache.text.exists('garden_collision_tmx')) {
+      content = this.cache.text.get('garden_collision_tmx');
+    }
+
+    const objects = [];
+
+    if (content) {
+      try {
+        const parser = new window.DOMParser();
+        const xmlDoc = parser.parseFromString(content, 'text/xml');
+
+        // Read imagelayer offset if present
+        const imgLayer = xmlDoc.querySelector('imagelayer[name="gardenMap"]') || xmlDoc.querySelector('imagelayer');
+        if (imgLayer) {
+          if (imgLayer.hasAttribute('offsetx')) {
+            offsetX = parseFloat(imgLayer.getAttribute('offsetx'));
+          }
+          if (imgLayer.hasAttribute('offsety')) {
+            offsetY = parseFloat(imgLayer.getAttribute('offsety'));
+          }
+        }
+
+        // Read gardenMapCollision objectgroup
+        const collisionGroup = xmlDoc.querySelector('objectgroup[name="gardenMapCollision"]') ||
+          xmlDoc.querySelector('objectgroup[name="Collision"]') ||
+          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'gardenMapCollision' || g.getAttribute('name') === 'Collision');
+
+        if (collisionGroup) {
+          const objElements = Array.from(collisionGroup.getElementsByTagName('object'));
+
+          objElements.forEach(objEl => {
+            const id = parseInt(objEl.getAttribute('id') || '0');
+            let rawX = parseFloat(objEl.getAttribute('x') || '0');
+            let rawY = parseFloat(objEl.getAttribute('y') || '0');
+            let rawW = parseFloat(objEl.getAttribute('width') || '0');
+            let rawH = parseFloat(objEl.getAttribute('height') || '0');
+
+            const polyEl = objEl.querySelector('polygon');
+            if (polyEl) {
+              const ptsAttr = polyEl.getAttribute('points') || '';
+              const pts = ptsAttr.trim().split(/\s+/).map(p => p.split(',').map(Number));
+              let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+              pts.forEach(([px, py]) => {
+                if (px < minX) minX = px;
+                if (px > maxX) maxX = px;
+                if (py < minY) minY = py;
+                if (py > maxY) maxY = py;
+              });
+              rawX += minX;
+              rawY += minY;
+              rawW = maxX - minX;
+              rawH = maxY - minY;
+            }
+
+            if (rawW > 0 && rawH > 0) {
+              // Account for imagelayer offset (433, 131)
+              const imgX = rawX - offsetX;
+              const imgY = rawY - offsetY;
+
+              // Center of rectangle in garden_map.png (1672x941) coordinate space
+              const origX = imgX + rawW / 2;
+              const origY = imgY + rawH / 2;
+
+              objects.push({
+                id,
+                name: `TMX Object #${id}`,
+                origX,
+                origY,
+                origW: rawW,
+                origH: rawH
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('DOMParser failed to parse TMX XML:', err);
+      }
+    }
+
+    return objects;
+  }
+
   createObstacles() {
-    this.obstacleDefinitions = [
-      // 1. HOUSE (Roof, Chimney, Left Wall & Right Wall flanking central doorway)
-      { type: 'rect', category: 'house', origX: 836, origY: 665, origW: 390, origH: 150, name: 'House Roof & Chimney' },
-      { type: 'rect', category: 'house', origX: 715, origY: 750, origW: 145, origH: 170, name: 'House Left Wall' },
-      { type: 'rect', category: 'house', origX: 957, origY: 750, origW: 145, origH: 170, name: 'House Right Wall' },
-
-      // 2. WOODEN CRATE / BOX (Left Side of House)
-      { type: 'rect', category: 'crate', origX: 605, origY: 825, origW: 50, origH: 50, name: 'Wooden Crate Left' },
-
-      // 3. STREET LAMPS (Bottom-Left & Bottom-Right of House)
-      { type: 'rect', category: 'lamp', origX: 318, origY: 800, origW: 40, origH: 90, name: 'Streetlamp Bottom Left' },
-      { type: 'rect', category: 'lamp', origX: 1350, origY: 800, origW: 40, origH: 90, name: 'Streetlamp Bottom Right' },
-
-      // 4. GANESH / BAPPA SHRINE (Top-Right)
-      { type: 'rect', category: 'shrine', origX: 1350, origY: 290, origW: 240, origH: 260, name: 'Bappa Shrine Structure & Platform' },
-
-      // 5. TREES (Physical footprint: Trunk + Canopy)
-      { type: 'rect', category: 'tree', origX: 140, origY: 130, origW: 160, origH: 150, name: 'Tree TL1' },
-      { type: 'rect', category: 'tree', origX: 530, origY: 130, origW: 160, origH: 150, name: 'Tree TL2' },
-      { type: 'rect', category: 'tree', origX: 1130, origY: 130, origW: 160, origH: 150, name: 'Tree TR1' },
-      { type: 'rect', category: 'tree', origX: 1520, origY: 130, origW: 160, origH: 150, name: 'Tree TR2' },
-      { type: 'rect', category: 'tree', origX: 110, origY: 585, origW: 160, origH: 150, name: 'Tree ML' },
-      { type: 'rect', category: 'tree', origX: 460, origY: 815, origW: 160, origH: 140, name: 'Tree BL' },
-      { type: 'rect', category: 'tree', origX: 1240, origY: 825, origW: 160, origH: 140, name: 'Tree BR1' },
-      { type: 'rect', category: 'tree', origX: 1550, origY: 810, origW: 160, origH: 140, name: 'Tree BR2' },
-      { type: 'rect', category: 'tree', origX: 1550, origY: 595, origW: 160, origH: 150, name: 'Tree MR' },
-
-      // 6. ROCKS / STONE CLUSTERS
-      { type: 'rect', category: 'rock', origX: 100, origY: 335, origW: 90, origH: 60, name: 'Rock Cluster Top Left' },
-      { type: 'rect', category: 'rock', origX: 1570, origY: 310, origW: 90, origH: 70, name: 'Rock Cluster Far Right' },
-      { type: 'rect', category: 'rock', origX: 1465, origY: 730, origW: 80, origH: 55, name: 'Rock Cluster Bottom Right' },
-
-      // 7. FALLEN BRANCHES / LOGS
-      { type: 'rect', category: 'log', origX: 430, origY: 445, origW: 140, origH: 60, name: 'Log/Bench Mid Left' },
-      { type: 'rect', category: 'log', origX: 430, origY: 365, origW: 110, origH: 65, name: 'Fallen Branch/Bush Mid Left' },
-
-      // 8. BOUNDARY FENCES
-      { type: 'rect', category: 'fence', origX: 410, origY: 35, origW: 760, origH: 40, name: 'Fence Top Left' },
-      { type: 'rect', category: 'fence', origX: 1260, origY: 35, origW: 760, origH: 40, name: 'Fence Top Right' },
-      { type: 'rect', category: 'fence', origX: 320, origY: 915, origW: 600, origH: 40, name: 'Fence Bottom Left' },
-      { type: 'rect', category: 'fence', origX: 1340, origY: 915, origW: 600, origH: 40, name: 'Fence Bottom Right' },
-      { type: 'rect', category: 'fence', origX: 35, origY: 470, origW: 40, origH: 900, name: 'Fence Left' },
-      { type: 'rect', category: 'fence', origX: 1637, origY: 470, origW: 40, origH: 900, name: 'Fence Right' }
-    ];
-
+    this.debugColliders = false;
     this.obstacleObjects = [];
 
-    this.obstacleDefinitions.forEach(def => {
+    // Parse TMX XML objects directly from GardenCollision.tmx using DOMParser
+    const tmxObjects = this.parseTiledCollisionMap();
+
+    tmxObjects.forEach(def => {
       const pos = this.getMapScreenPos(def.origX, def.origY);
-      const gameObject = this.add.rectangle(pos.x, pos.y, def.origW * pos.scale, def.origH * pos.scale, 0x000000, 0);
+      const gameObject = this.add.rectangle(
+        pos.x, pos.y,
+        def.origW * pos.scale, def.origH * pos.scale,
+        0xFF0000, this.debugColliders ? 0.4 : 0
+      );
+      if (this.debugColliders) {
+        gameObject.setStrokeStyle(2, 0xFF0000, 0.9);
+      }
       this.physics.add.existing(gameObject, true);
 
       gameObject.obstacleDef = def;
       this.obstacles.add(gameObject);
       this.obstacleObjects.push(gameObject);
     });
+
+    // F2 Key listener to toggle visual debug mode live
+    if (this.input.keyboard) {
+      this.input.keyboard.on('keydown-F2', () => {
+        this.debugColliders = !this.debugColliders;
+        this.obstacleObjects.forEach(obj => {
+          obj.setFillStyle(0xFF0000, this.debugColliders ? 0.4 : 0);
+          obj.setStrokeStyle(this.debugColliders ? 2 : 0, 0xFF0000, 0.9);
+        });
+      });
+    }
   }
 
   updateObstaclesPositions() {
