@@ -11,6 +11,8 @@ export default class GameScene extends Phaser.Scene {
       frameHeight: 256
     });
     this.load.image('garden_map', 'assets/garden_map.png');
+    this.load.image('dialogueBox', 'assets/dialogue_box.png');
+    this.load.image('dialogueBoy', 'assets/dialogue_boy.png');
   }
 
   create() {
@@ -18,6 +20,7 @@ export default class GameScene extends Phaser.Scene {
     this.doorActive = false;
     this.isPromptOpen = false;
     this.isFading = false;
+    this.isDialogueOpen = false;
 
     // 1. Static physics group for solid obstacles (house, roof, shrine, trees, rocks, logs, lamps, crate, fences)
     this.obstacles = this.physics.add.staticGroup();
@@ -38,9 +41,10 @@ export default class GameScene extends Phaser.Scene {
     // 5. Create Mushak (the player)
     this.createPlayer();
 
-    // 6. Setup ingredient data registry, top-left UI & interaction prompt overlay
+    // 6. Setup ingredient data registry, top-left UI, prompt overlay & pixel dialogue UI
     this.createUI();
     this.createPromptUI();
+    this.createDialogueUI();
 
     // 7. Spawn collectible ingredients (Flowers and Durva)
     this.createCollectibles();
@@ -65,7 +69,9 @@ export default class GameScene extends Phaser.Scene {
       this.cameras.main.fadeIn(700, 0, 0, 0);
       this.isFading = false;
       this.isPromptOpen = false;
+      this.isDialogueOpen = false;
       if (this.promptContainer) this.promptContainer.setVisible(false);
+      if (this.dialogueContainer) this.dialogueContainer.setVisible(false);
       if (this.doorMarker) this.doorMarker.setVisible(true);
       if (this.objectiveText) this.objectiveText.setText('Go to the door to enter the house 🏠');
       const doorPos = this.getMapScreenPos(836, 860);
@@ -126,21 +132,21 @@ export default class GameScene extends Phaser.Scene {
 
     this.promptContainer = this.add.container(width / 2, height / 2);
 
-    const box = this.add.rectangle(0, 0, 320, 150, 0x1a1a2e, 0.95);
-    box.setStrokeStyle(3, 0xFFD700);
+    const box = this.add.image(0, 0, 'dialogueBox');
+    box.setDisplaySize(760, 240);
 
-    const title = this.add.text(0, -35, 'Enter the house? 🏠', {
-      fontSize: '22px',
-      fontFamily: 'Segoe UI, sans-serif',
+    const title = this.add.text(0, -25, 'Enter the house? 🏠', {
+      fontSize: '20px',
+      fontFamily: 'monospace',
       fontStyle: 'bold',
-      fill: '#FFD700',
+      fill: '#1a1a1a',
       align: 'center'
     }).setOrigin(0.5);
 
-    const subtext = this.add.text(0, 5, 'Press ENTER or SPACE', {
+    const subtext = this.add.text(0, 25, 'Press ENTER or SPACE', {
       fontSize: '16px',
-      fontFamily: 'Segoe UI, sans-serif',
-      fill: '#FFFFFF',
+      fontFamily: 'monospace',
+      fill: '#1a1a1a',
       align: 'center'
     }).setOrigin(0.5);
 
@@ -498,24 +504,234 @@ export default class GameScene extends Phaser.Scene {
     this.checkMissionProgress(type);
   }
 
+  createDialogueUI() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.dialogueContainer = this.add.container(width / 2, height / 2);
+    this.dialogueContainer.setDepth(2000);
+    this.dialogueContainer.setVisible(false);
+
+    // 1. Dialogue Box Image (centered inside container)
+    this.dialogueBox = this.add.image(0, 0, 'dialogueBox');
+    this.dialogueBox.setOrigin(0.5, 0.5);
+    if (this.dialogueBox.texture) {
+      this.dialogueBox.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 2. Dialogue Boy Image (positioned inside LEFT portion of dialogue box frame)
+    this.dialogueBoy = this.add.image(-430, -5, 'dialogueBoy');
+    this.dialogueBoy.setOrigin(0.5, 0.5);
+    if (this.dialogueBoy.texture) {
+      this.dialogueBoy.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 3. Dialogue Text (positioned inside RIGHT portion of dialogue box frame)
+    this.dialogueText = this.add.text(-130, -100, '', {
+      fontSize: '42px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#1a1a1a',
+      stroke: '#1a1a1a',
+      strokeThickness: 2,
+      wordWrap: { width: 540, useAdvancedWrap: true },
+      lineSpacing: 6
+    });
+    this.dialogueText.setOrigin(0, 0);
+
+    this.dialogueContainer.add([this.dialogueBox, this.dialogueBoy, this.dialogueText]);
+    this.updateDialogueScale();
+
+    // Enable pointer/click interaction to advance or skip dialogue
+    this.input.on('pointerdown', () => {
+      if (this.isPromptOpen) return;
+      if (this.isDialogueOpen) {
+        this.handleDialogueAdvance();
+      }
+    });
+  }
+
+  updateDialogueScale() {
+    if (!this.dialogueContainer) return;
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.dialogueContainer.setPosition(width / 2, height / 2);
+
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.baseDialogueScale = targetScale;
+
+    if (this.dialogueContainer.visible && !this.isDialogueAnimating) {
+      this.dialogueContainer.setScale(targetScale);
+    }
+  }
+
+  showMissionDialogue(message, onComplete) {
+    if (!this.dialogueContainer) return;
+
+    if (this.dialogueTimer) {
+      this.dialogueTimer.remove();
+      this.dialogueTimer = null;
+    }
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+      this.dialogueAutoCloseTimer = null;
+    }
+    this.tweens.killTweensOf(this.dialogueContainer);
+    this.tweens.killTweensOf(this.dialogueBoy);
+
+    this.isDialogueOpen = true;
+    this.isDialogueAnimating = true;
+    this.currentDialogueFullText = message;
+    this.onDialogueComplete = onComplete;
+    this.isTypingComplete = false;
+
+    if (this.player) {
+      this.player.setVelocity(0, 0);
+      this.player.anims.stop();
+      const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
+      this.player.setFrame(idleFrames[this.lastDirection || 'down']);
+    }
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.baseDialogueScale = targetScale;
+
+    // Initial state: box container scale 0.2, alpha 0
+    this.dialogueContainer.setPosition(width / 2, height / 2);
+    this.dialogueContainer.setScale(targetScale * 0.2);
+    this.dialogueContainer.setAlpha(0);
+    this.dialogueContainer.setVisible(true);
+
+    // Initial state: boy scale 0.2, alpha 0
+    this.dialogueBoy.setScale(0.2);
+    this.dialogueBoy.setAlpha(0);
+
+    // Empty text initially
+    this.dialogueText.setText('');
+
+    // Phase 1: Dialogue box 250-350ms pop/zoom animation
+    this.tweens.add({
+      targets: this.dialogueContainer,
+      scaleX: targetScale,
+      scaleY: targetScale,
+      alpha: 1,
+      duration: 300,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Phase 2: Dialogue boy 200-300ms pop/fade animation starting AFTER box finishes
+        this.tweens.add({
+          targets: this.dialogueBoy,
+          scaleX: 1,
+          scaleY: 1,
+          alpha: 1,
+          duration: 250,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.isDialogueAnimating = false;
+            // Phase 3: Typewriter text character-by-character starting ONLY AFTER boy finishes
+            this.startTypewriter(message);
+          }
+        });
+      }
+    });
+  }
+
+  startTypewriter(message) {
+    let charIndex = 0;
+    const totalChars = message.length;
+
+    this.dialogueTimer = this.time.addEvent({
+      delay: 40,
+      repeat: totalChars - 1,
+      callback: () => {
+        charIndex++;
+        this.dialogueText.setText(message.substring(0, charIndex));
+        if (charIndex >= totalChars) {
+          this.onTypewriterComplete();
+        }
+      }
+    });
+  }
+
+  onTypewriterComplete() {
+    this.isTypingComplete = true;
+
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+    }
+    this.dialogueAutoCloseTimer = this.time.delayedCall(2500, () => {
+      this.closeMissionDialogue();
+    });
+  }
+
+  closeMissionDialogue() {
+    if (!this.isDialogueOpen) return;
+
+    if (this.dialogueTimer) {
+      this.dialogueTimer.remove();
+      this.dialogueTimer = null;
+    }
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+      this.dialogueAutoCloseTimer = null;
+    }
+
+    this.isDialogueAnimating = true;
+
+    this.tweens.add({
+      targets: this.dialogueContainer,
+      scaleX: this.baseDialogueScale * 0.8,
+      scaleY: this.baseDialogueScale * 0.8,
+      alpha: 0,
+      duration: 200,
+      ease: 'Power2',
+      onComplete: () => {
+        this.dialogueContainer.setVisible(false);
+        this.isDialogueOpen = false;
+        this.isDialogueAnimating = false;
+
+        const cb = this.onDialogueComplete;
+        this.onDialogueComplete = null;
+        if (cb) cb();
+      }
+    });
+  }
+
+  handleDialogueAdvance() {
+    if (!this.isDialogueOpen || this.isDialogueAnimating) return;
+
+    if (!this.isTypingComplete) {
+      if (this.dialogueTimer) {
+        this.dialogueTimer.remove();
+        this.dialogueTimer = null;
+      }
+      this.dialogueText.setText(this.currentDialogueFullText);
+      this.onTypewriterComplete();
+    } else {
+      this.closeMissionDialogue();
+    }
+  }
+
   checkMissionProgress(type) {
     const config = this.ingredientData[type];
 
-    if (config.collected >= config.required) {
-      if (type === 'flower') {
-        this.bannerText.setText('Flowers collected!\nBappa needs Durva next! 🌿');
-        this.bannerText.setVisible(true);
+    if (config && config.collected >= config.required) {
+      if (this.bannerText) this.bannerText.setVisible(false);
 
-        this.time.delayedCall(2000, () => {
-          this.bannerText.setVisible(false);
+      if (type === 'flower') {
+        this.showMissionDialogue("You collected the flowers!\nNow collect some Durva!", () => {
           this.startMission2();
         });
       } else if (type === 'durva') {
-        this.bannerText.setText('Durva collected!\nBappa needs Bananas next! 🍌');
-        this.bannerText.setVisible(true);
-
-        this.time.delayedCall(2000, () => {
-          this.bannerText.setVisible(false);
+        this.showMissionDialogue("Great! You collected the Durva!\nNow get inside the house to collect some Bananas!", () => {
+          this.objectiveText.setText('Go to the door to enter the house 🏠');
+          this.doorActive = true;
+          if (this.doorMarker) this.doorMarker.setVisible(true);
+        });
+      } else if (type === 'banana' || type === 'bananas') {
+        this.showMissionDialogue("Awesome! You collected the bananas!\nNow go to the house!", () => {
           this.objectiveText.setText('Go to the door to enter the house 🏠');
           this.doorActive = true;
           if (this.doorMarker) this.doorMarker.setVisible(true);
@@ -578,12 +794,15 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // 6. Update Banners & Prompts
+    // 6. Update Banners & Prompts & Dialogue Container
     if (this.bannerText) {
       this.bannerText.setPosition(width / 2, height / 2);
     }
     if (this.promptContainer) {
       this.promptContainer.setPosition(width / 2, height / 2);
+    }
+    if (this.dialogueContainer) {
+      this.updateDialogueScale();
     }
   }
 
@@ -601,15 +820,17 @@ export default class GameScene extends Phaser.Scene {
 
     this.enterKey.on('down', () => {
       if (this.isPromptOpen) this.confirmEnterHouse();
+      else if (this.isDialogueOpen) this.handleDialogueAdvance();
     });
 
     this.spaceKey.on('down', () => {
       if (this.isPromptOpen) this.confirmEnterHouse();
+      else if (this.isDialogueOpen) this.handleDialogueAdvance();
     });
   }
 
   update() {
-    if (this.isPromptOpen || this.isFading) {
+    if (this.isPromptOpen || this.isFading || this.isDialogueOpen) {
       this.player.setVelocity(0, 0);
       return;
     }
