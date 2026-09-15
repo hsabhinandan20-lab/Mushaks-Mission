@@ -132,40 +132,60 @@ export default class GameScene extends Phaser.Scene {
 
     this.promptContainer = this.add.container(width / 2, height / 2);
 
+    // 1. Dialogue Box Image (centered inside container)
     const box = this.add.image(0, 0, 'dialogueBox');
-    box.setDisplaySize(760, 240);
+    box.setOrigin(0.5, 0.5);
+    if (box.texture) {
+      box.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
 
-    const title = this.add.text(0, -25, 'Enter the house? 🏠', {
-      fontSize: '20px',
-      fontFamily: 'monospace',
+    // 2. Dialogue Boy Image (positioned inside LEFT brown section)
+    const boy = this.add.image(-430, -5, 'dialogueBoy');
+    boy.setOrigin(0.5, 0.5);
+    if (boy.texture) {
+      boy.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 3. Title & Subtitle centered in the RIGHT cream writing section
+    const title = this.add.text(190, -40, 'Press ENTER or SPACE \nto enter the house', {
+      fontSize: '42px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
       fontStyle: 'bold',
       fill: '#1a1a1a',
+      stroke: '#1a1a1a',
+      strokeThickness: 1,
       align: 'center'
     }).setOrigin(0.5);
 
-    const subtext = this.add.text(0, 25, 'Press ENTER or SPACE', {
-      fontSize: '16px',
-      fontFamily: 'monospace',
-      fill: '#1a1a1a',
+    const subtext = this.add.text(190, 40, '', {
+      fontSize: '24px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#4a3525',
+      stroke: '#4a3525',
+      strokeThickness: 1,
       align: 'center'
     }).setOrigin(0.5);
 
-    const btn = this.add.rectangle(0, 45, 140, 34, 0xFFD700, 1);
-    btn.setInteractive({ useHandCursor: true });
-
-    const btnText = this.add.text(0, 45, 'Enter ➔', {
-      fontSize: '16px',
-      fontFamily: 'Segoe UI, sans-serif',
-      fontStyle: 'bold',
-      fill: '#1a1a2e'
-    }).setOrigin(0.5);
-
-    this.promptContainer.add([box, title, subtext, btn, btnText]);
-    this.promptContainer.setDepth(100);
+    this.promptContainer.add([box, boy, title, subtext]);
+    this.promptContainer.setDepth(1900);
     this.promptContainer.setVisible(false);
 
-    btn.on('pointerdown', () => this.confirmEnterHouse());
+    this.updatePromptScale();
+
+    // Clicking dialogue box confirms entering house
     box.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirmEnterHouse());
+  }
+
+  updatePromptScale() {
+    if (!this.promptContainer) return;
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.promptContainer.setPosition(width / 2, height / 2);
+
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.promptContainer.setScale(targetScale);
   }
 
   onDoorOverlap() {
@@ -178,7 +198,7 @@ export default class GameScene extends Phaser.Scene {
       this.player.setFrame(idleFrames[this.lastDirection || 'down']);
 
       if (this.promptContainer) {
-        this.promptContainer.setPosition(this.scale.width / 2, this.scale.height / 2);
+        this.updatePromptScale();
         this.promptContainer.setVisible(true);
       }
     }
@@ -721,7 +741,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.bannerText) this.bannerText.setVisible(false);
 
       if (type === 'flower') {
-        this.showMissionDialogue("You collected the flowers!\nNow collect some Durva!", () => {
+        this.showMissionDialogue("Great! You collected the flowers!\nNow collect some Durva!", () => {
           this.startMission2();
         });
       } else if (type === 'durva') {
@@ -731,7 +751,7 @@ export default class GameScene extends Phaser.Scene {
           if (this.doorMarker) this.doorMarker.setVisible(true);
         });
       } else if (type === 'banana' || type === 'bananas') {
-        this.showMissionDialogue("Awesome! You collected the bananas!\nNow go to the house!", () => {
+        this.showMissionDialogue("Great! You collected the Bananas!\nNow get the Coconuts!", () => {
           this.objectiveText.setText('Go to the door to enter the house 🏠');
           this.doorActive = true;
           if (this.doorMarker) this.doorMarker.setVisible(true);
@@ -799,7 +819,7 @@ export default class GameScene extends Phaser.Scene {
       this.bannerText.setPosition(width / 2, height / 2);
     }
     if (this.promptContainer) {
-      this.promptContainer.setPosition(width / 2, height / 2);
+      this.updatePromptScale();
     }
     if (this.dialogueContainer) {
       this.updateDialogueScale();

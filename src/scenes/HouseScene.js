@@ -14,6 +14,8 @@ export default class HouseScene extends Phaser.Scene {
     }
     this.load.image('house_map', 'assets/house.png');
     this.load.text('collision_tmx', 'assets/collision.tmx');
+    this.load.image('dialogueBox', 'assets/dialogue_box.png');
+    this.load.image('dialogueBoy', 'assets/dialogue_boy.png');
   }
 
   parseTiledCollisionMap() {
@@ -143,6 +145,7 @@ export default class HouseScene extends Phaser.Scene {
     this.totalBananas = 3;
     this.isFading = false;
     this.isPromptOpen = false;
+    this.isDialogueOpen = false;
 
     // Fade camera in from black
     this.cameras.main.fadeIn(700, 0, 0, 0);
@@ -166,8 +169,9 @@ export default class HouseScene extends Phaser.Scene {
     // 5. Create Mushak (the player) at bottom-center entrance
     this.createPlayer();
 
-    // 6. Setup UI (Mission 3 objective & banana counter)
+    // 6. Setup UI (Mission 3 objective & banana counter) & pixel dialogue UI
     this.createUI();
+    this.createDialogueUI();
 
     // 7. Spawn 3 Banana collectibles
     this.createBananas();
@@ -408,9 +412,219 @@ export default class HouseScene extends Phaser.Scene {
 
     if (this.bananasCollected >= this.totalBananas) {
       this.time.delayedCall(300, () => {
-        this.bannerText.setText('Bananas collected! 🍌\nBappa needs Coconuts next! 🥥');
-        this.bannerText.setVisible(true);
+        if (this.bannerText) this.bannerText.setVisible(false);
+        this.showMissionDialogue("Great! You collected the Bananas!\nNow get the Coconuts!");
       });
+    }
+  }
+
+  createDialogueUI() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.dialogueContainer = this.add.container(width / 2, height / 2);
+    this.dialogueContainer.setDepth(2000);
+    this.dialogueContainer.setVisible(false);
+
+    // 1. Dialogue Box Image (centered inside container)
+    this.dialogueBox = this.add.image(0, 0, 'dialogueBox');
+    this.dialogueBox.setOrigin(0.5, 0.5);
+    if (this.dialogueBox.texture) {
+      this.dialogueBox.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 2. Dialogue Boy Image (positioned inside LEFT portion of dialogue box frame)
+    this.dialogueBoy = this.add.image(-430, -5, 'dialogueBoy');
+    this.dialogueBoy.setOrigin(0.5, 0.5);
+    if (this.dialogueBoy.texture) {
+      this.dialogueBoy.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 3. Dialogue Text (positioned inside RIGHT portion of dialogue box frame)
+    this.dialogueText = this.add.text(-130, -100, '', {
+      fontSize: '42px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#1a1a1a',
+      stroke: '#1a1a1a',
+      strokeThickness: 2,
+      wordWrap: { width: 540, useAdvancedWrap: true },
+      lineSpacing: 6
+    });
+    this.dialogueText.setOrigin(0, 0);
+
+    this.dialogueContainer.add([this.dialogueBox, this.dialogueBoy, this.dialogueText]);
+    this.updateDialogueScale();
+
+    // Enable pointer/click interaction to advance or skip dialogue
+    this.input.on('pointerdown', () => {
+      if (this.isPromptOpen) return;
+      if (this.isDialogueOpen) {
+        this.handleDialogueAdvance();
+      }
+    });
+  }
+
+  updateDialogueScale() {
+    if (!this.dialogueContainer) return;
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.dialogueContainer.setPosition(width / 2, height / 2);
+
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.baseDialogueScale = targetScale;
+
+    if (this.dialogueContainer.visible && !this.isDialogueAnimating) {
+      this.dialogueContainer.setScale(targetScale);
+    }
+  }
+
+  showMissionDialogue(message, onComplete) {
+    if (!this.dialogueContainer) return;
+
+    if (this.dialogueTimer) {
+      this.dialogueTimer.remove();
+      this.dialogueTimer = null;
+    }
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+      this.dialogueAutoCloseTimer = null;
+    }
+    this.tweens.killTweensOf(this.dialogueContainer);
+    this.tweens.killTweensOf(this.dialogueBoy);
+
+    this.isDialogueOpen = true;
+    this.isDialogueAnimating = true;
+    this.currentDialogueFullText = message;
+    this.onDialogueComplete = onComplete;
+    this.isTypingComplete = false;
+
+    if (this.player) {
+      this.player.setVelocity(0, 0);
+      this.player.anims.stop();
+      const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
+      this.player.setFrame(idleFrames[this.lastDirection || 'down']);
+    }
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.baseDialogueScale = targetScale;
+
+    // Initial state: box container scale 0.2, alpha 0
+    this.dialogueContainer.setPosition(width / 2, height / 2);
+    this.dialogueContainer.setScale(targetScale * 0.2);
+    this.dialogueContainer.setAlpha(0);
+    this.dialogueContainer.setVisible(true);
+
+    // Initial state: boy scale 0.2, alpha 0
+    this.dialogueBoy.setScale(0.2);
+    this.dialogueBoy.setAlpha(0);
+
+    // Empty text initially
+    this.dialogueText.setText('');
+
+    // Phase 1: Dialogue box 250-350ms pop/zoom animation
+    this.tweens.add({
+      targets: this.dialogueContainer,
+      scaleX: targetScale,
+      scaleY: targetScale,
+      alpha: 1,
+      duration: 300,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Phase 2: Dialogue boy 200-300ms pop/fade animation starting AFTER box finishes
+        this.tweens.add({
+          targets: this.dialogueBoy,
+          scaleX: 1,
+          scaleY: 1,
+          alpha: 1,
+          duration: 250,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.isDialogueAnimating = false;
+            // Phase 3: Typewriter text character-by-character starting ONLY AFTER boy finishes
+            this.startTypewriter(message);
+          }
+        });
+      }
+    });
+  }
+
+  startTypewriter(message) {
+    let charIndex = 0;
+    const totalChars = message.length;
+
+    this.dialogueTimer = this.time.addEvent({
+      delay: 40,
+      repeat: totalChars - 1,
+      callback: () => {
+        charIndex++;
+        this.dialogueText.setText(message.substring(0, charIndex));
+        if (charIndex >= totalChars) {
+          this.onTypewriterComplete();
+        }
+      }
+    });
+  }
+
+  onTypewriterComplete() {
+    this.isTypingComplete = true;
+
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+    }
+    this.dialogueAutoCloseTimer = this.time.delayedCall(2500, () => {
+      this.closeMissionDialogue();
+    });
+  }
+
+  closeMissionDialogue() {
+    if (!this.isDialogueOpen) return;
+
+    if (this.dialogueTimer) {
+      this.dialogueTimer.remove();
+      this.dialogueTimer = null;
+    }
+    if (this.dialogueAutoCloseTimer) {
+      this.dialogueAutoCloseTimer.remove();
+      this.dialogueAutoCloseTimer = null;
+    }
+
+    this.isDialogueAnimating = true;
+
+    this.tweens.add({
+      targets: this.dialogueContainer,
+      scaleX: this.baseDialogueScale * 0.8,
+      scaleY: this.baseDialogueScale * 0.8,
+      alpha: 0,
+      duration: 200,
+      ease: 'Power2',
+      onComplete: () => {
+        this.dialogueContainer.setVisible(false);
+        this.isDialogueOpen = false;
+        this.isDialogueAnimating = false;
+
+        const cb = this.onDialogueComplete;
+        this.onDialogueComplete = null;
+        if (cb) cb();
+      }
+    });
+  }
+
+  handleDialogueAdvance() {
+    if (!this.isDialogueOpen || this.isDialogueAnimating) return;
+
+    if (!this.isTypingComplete) {
+      if (this.dialogueTimer) {
+        this.dialogueTimer.remove();
+        this.dialogueTimer = null;
+      }
+      this.dialogueText.setText(this.currentDialogueFullText);
+      this.onTypewriterComplete();
+    } else {
+      this.closeMissionDialogue();
     }
   }
 
@@ -458,9 +672,12 @@ export default class HouseScene extends Phaser.Scene {
       if (this.exitTrigger.body) this.exitTrigger.body.updateFromGameObject();
     }
 
-    // 6. Update Central Completion Banner
+    // 6. Update Central Completion Banner & Dialogue Container
     if (this.bannerText) {
       this.bannerText.setPosition(width / 2, height / 2);
+    }
+    if (this.dialogueContainer) {
+      this.updateDialogueScale();
     }
   }
 
@@ -472,10 +689,21 @@ export default class HouseScene extends Phaser.Scene {
       down: Phaser.Input.Keyboard.KeyCodes.S,
       right: Phaser.Input.Keyboard.KeyCodes.D
     });
+
+    const enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    enterKey.on('down', () => {
+      if (this.isDialogueOpen) this.handleDialogueAdvance();
+    });
+
+    spaceKey.on('down', () => {
+      if (this.isDialogueOpen) this.handleDialogueAdvance();
+    });
   }
 
   update() {
-    if (this.isFading) {
+    if (this.isFading || this.isDialogueOpen) {
       this.player.setVelocity(0, 0);
       return;
     }
