@@ -31,6 +31,7 @@ export default class GameScene extends Phaser.Scene {
     this.isPromptOpen = false;
     this.isFading = false;
     this.isDialogueOpen = false;
+    this.isGameOver = false;
 
     // 1. Static physics group for solid obstacles (house, roof, shrine, trees, rocks, logs, lamps, crate, fences)
     this.obstacles = this.physics.add.staticGroup();
@@ -151,50 +152,78 @@ export default class GameScene extends Phaser.Scene {
     const height = this.scale.height;
 
     this.promptContainer = this.add.container(width / 2, height / 2);
-
-    // 1. Dialogue Box Image (centered inside container)
-    const box = this.add.image(0, 0, 'dialogueBox');
-    box.setOrigin(0.5, 0.5);
-    if (box.texture) {
-      box.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    }
-
-    // 2. Dialogue Boy Image (positioned inside LEFT brown section)
-    const boy = this.add.image(-430, -5, 'dialogueBoy');
-    boy.setOrigin(0.5, 0.5);
-    if (boy.texture) {
-      boy.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    }
-
-    // 3. Title & Subtitle centered in the RIGHT cream writing section
-    const title = this.add.text(190, -40, 'Press ENTER or SPACE \nto enter the house', {
-      fontSize: '42px',
-      fontFamily: "'Courier New', Consolas, Monaco, monospace",
-      fontStyle: 'bold',
-      fill: '#1a1a1a',
-      stroke: '#1a1a1a',
-      strokeThickness: 1,
-      align: 'center'
-    }).setOrigin(0.5);
-
-    const subtext = this.add.text(190, 40, '', {
-      fontSize: '24px',
-      fontFamily: "'Courier New', Consolas, Monaco, monospace",
-      fontStyle: 'bold',
-      fill: '#4a3525',
-      stroke: '#4a3525',
-      strokeThickness: 1,
-      align: 'center'
-    }).setOrigin(0.5);
-
-    this.promptContainer.add([box, boy, title, subtext]);
-    this.promptContainer.setDepth(1900);
+    this.promptContainer.setDepth(1000);
     this.promptContainer.setVisible(false);
 
-    this.updatePromptScale();
+    const boxWidth = 560;
+    const boxHeight = 240;
 
-    // Clicking dialogue box confirms entering house
-    box.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.confirmEnterHouse());
+    // Dark brown outer border
+    const outerBorder = this.add.rectangle(0, 0, boxWidth, boxHeight, 0x3E2723, 0.95);
+    outerBorder.setStrokeStyle(4, 0x8D6E63);
+
+    // Golden inner border line
+    const innerBorder = this.add.rectangle(0, 0, boxWidth - 16, boxHeight - 16, 0x1B1B1B, 0.95);
+    innerBorder.setStrokeStyle(3, 0xFFD700);
+
+    // Headline Text
+    const titleText = this.add.text(0, -65, 'ENTER THE HOUSE?', {
+      fontSize: '28px',
+      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFD700',
+      stroke: '#000000',
+      strokeThickness: 4
+    }).setOrigin(0.5);
+
+    // Body Instruction Text
+    const bodyText = this.add.text(0, -15, 'Do you want to enter the house\nto collect Bananas?', {
+      fontSize: '18px',
+      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+      fill: '#FFFFFF',
+      align: 'center',
+      lineSpacing: 6
+    }).setOrigin(0.5);
+
+    // Interactive Button: ENTER (Press Enter / Space)
+    const enterBtnBg = this.add.rectangle(-110, 55, 170, 48, 0x2E7D32, 1);
+    enterBtnBg.setStrokeStyle(2, 0x81C784);
+    enterBtnBg.setInteractive({ useHandCursor: true });
+    enterBtnBg.on('pointerdown', () => this.confirmEnterHouse());
+    enterBtnBg.on('pointerover', () => enterBtnBg.setFillStyle(0x388E3C, 1));
+    enterBtnBg.on('pointerout', () => enterBtnBg.setFillStyle(0x2E7D32, 1));
+
+    const enterBtnText = this.add.text(-110, 55, 'ENTER [⏎]', {
+      fontSize: '16px',
+      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFFFFF'
+    }).setOrigin(0.5);
+
+    // Interactive Button: CANCEL
+    const cancelBtnBg = this.add.rectangle(110, 55, 140, 48, 0xC62828, 1);
+    cancelBtnBg.setStrokeStyle(2, 0xE57373);
+    cancelBtnBg.setInteractive({ useHandCursor: true });
+    cancelBtnBg.on('pointerdown', () => {
+      this.isPromptOpen = false;
+      this.promptContainer.setVisible(false);
+    });
+    cancelBtnBg.on('pointerover', () => cancelBtnBg.setFillStyle(0xD32F2F, 1));
+    cancelBtnBg.on('pointerout', () => cancelBtnBg.setFillStyle(0xC62828, 1));
+
+    const cancelBtnText = this.add.text(110, 55, 'CANCEL', {
+      fontSize: '16px',
+      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFFFFF'
+    }).setOrigin(0.5);
+
+    this.promptContainer.add([
+      outerBorder, innerBorder, titleText, bodyText,
+      enterBtnBg, enterBtnText, cancelBtnBg, cancelBtnText
+    ]);
+
+    this.updatePromptScale();
   }
 
   updatePromptScale() {
@@ -209,23 +238,22 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onDoorOverlap() {
-    if (this.doorActive && !this.isPromptOpen && !this.isFading) {
-      this.isPromptOpen = true;
-      this.player.setVelocity(0, 0);
-      this.player.anims.stop();
+    if (this.isGameOver || !this.doorActive || this.isPromptOpen || this.isFading) return;
+    this.isPromptOpen = true;
+    this.player.setVelocity(0, 0);
+    this.player.anims.stop();
 
-      const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
-      this.player.setFrame(idleFrames[this.lastDirection || 'down']);
+    const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
+    this.player.setFrame(idleFrames[this.lastDirection || 'down']);
 
-      if (this.promptContainer) {
-        this.updatePromptScale();
-        this.promptContainer.setVisible(true);
-      }
+    if (this.promptContainer) {
+      this.updatePromptScale();
+      this.promptContainer.setVisible(true);
     }
   }
 
   confirmEnterHouse() {
-    if (!this.isPromptOpen || this.isFading) return;
+    if (!this.isPromptOpen || this.isFading || this.isGameOver) return;
     this.isFading = true;
 
     if (this.promptContainer) {
@@ -257,7 +285,7 @@ export default class GameScene extends Phaser.Scene {
         const xmlDoc = parser.parseFromString(content, 'text/xml');
 
         // Read imagelayer offset if present
-        const imgLayer = xmlDoc.querySelector('imagelayer[name="gardenMap"]') || xmlDoc.querySelector('imagelayer');
+        const imgLayer = xmlDoc.querySelector('imagelayer[name="Garden Map Background"]') || xmlDoc.querySelector('imagelayer');
         if (imgLayer) {
           if (imgLayer.hasAttribute('offsetx')) {
             offsetX = parseFloat(imgLayer.getAttribute('offsetx'));
@@ -268,9 +296,8 @@ export default class GameScene extends Phaser.Scene {
         }
 
         // Read gardenMapCollision objectgroup
-        const collisionGroup = xmlDoc.querySelector('objectgroup[name="gardenMapCollision"]') ||
-          xmlDoc.querySelector('objectgroup[name="Collision"]') ||
-          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'gardenMapCollision' || g.getAttribute('name') === 'Collision');
+        const collisionGroup = xmlDoc.querySelector('objectgroup[name="GardenCollision"]') ||
+          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'GardenCollision');
 
         if (collisionGroup) {
           const objElements = Array.from(collisionGroup.getElementsByTagName('object'));
@@ -422,7 +449,7 @@ export default class GameScene extends Phaser.Scene {
       this.player.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
     this.player.setCollideWorldBounds(true);
-    this.player.body.setCircle(60, 68, 68);
+    this.player.body.setCircle(45, 83, 140);
 
     this.lastDirection = 'down';
   }
@@ -432,20 +459,9 @@ export default class GameScene extends Phaser.Scene {
     const height = this.scale.height;
 
     this.ingredientData = {
-      flower: {
-        name: 'Flowers',
-        singularName: 'Flower',
-        required: 3,
-        collected: 0,
-        active: true
-      },
-      durva: {
-        name: 'Durva',
-        singularName: 'Durva',
-        required: 3,
-        collected: 0,
-        active: false
-      }
+      flower: { required: 3, collected: 0, icon: '🌸', singularName: 'Flower', active: true },
+      durva: { required: 3, collected: 0, icon: '🌿', singularName: 'Durva', active: false },
+      banana: { required: 3, collected: 0, icon: '🍌', singularName: 'Banana', active: false }
     };
 
     // Compact Top-Left Pixel Art HUD Container
@@ -457,54 +473,43 @@ export default class GameScene extends Phaser.Scene {
     const hudBg = this.add.graphics();
     // Drop shadow behind HUD
     hudBg.fillStyle(0x000000, 0.45);
-    hudBg.fillRect(3, 3, 336, 40);
+    hudBg.fillRect(3, 3, 310, 40);
     // Outer dark chocolate border
     hudBg.fillStyle(0x180D08, 0.95);
-    hudBg.fillRect(0, 0, 336, 40);
+    hudBg.fillRect(0, 0, 310, 40);
     // Inner dark oak wood fill
     hudBg.fillStyle(0x2C1A10, 0.92);
-    hudBg.fillRect(2, 2, 332, 36);
+    hudBg.fillRect(2, 2, 306, 36);
     // Inner golden border line
     hudBg.lineStyle(2, 0xC89632, 0.9);
-    hudBg.strokeRect(3, 3, 330, 34);
+    hudBg.strokeRect(3, 3, 304, 34);
     // Corner pixel highlights
     hudBg.fillStyle(0xFFE89C, 1);
     hudBg.fillRect(4, 4, 2, 2);
-    hudBg.fillRect(329, 4, 2, 2);
+    hudBg.fillRect(303, 4, 2, 2);
     hudBg.fillRect(4, 33, 2, 2);
-    hudBg.fillRect(329, 33, 2, 2);
-    // Vertical divider line
-    hudBg.lineStyle(1, 0x8B5E34, 0.6);
-    hudBg.lineBetween(102, 6, 102, 33);
+    hudBg.fillRect(303, 33, 2, 2);
     this.hudContainer.add(hudBg);
 
-    // 2. Mission Badge (Left Box)
-    const badgeBg = this.add.graphics();
-    badgeBg.fillStyle(0x5B3419, 1);
-    badgeBg.fillRect(6, 6, 90, 28);
-    badgeBg.lineStyle(1, 0xE5C158, 1);
-    badgeBg.strokeRect(6, 6, 90, 28);
-    this.hudContainer.add(badgeBg);
-
-    this.missionBadgeText = this.add.text(51, 20, 'MISSION 1', {
-      fontSize: '11px',
+    const titleText = this.add.text(12, 20, 'ITEMS:', {
+      fontSize: '13px',
       fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
       fontStyle: 'bold',
-      fill: '#FFF3CD',
-      stroke: '#180D08',
+      fill: '#FFD700',
+      stroke: '#000000',
       strokeThickness: 3
-    }).setOrigin(0.5);
-    this.hudContainer.add(this.missionBadgeText);
+    }).setOrigin(0, 0.5);
+    this.hudContainer.add(titleText);
 
     // 3. Flower Icon & Counter
-    this.flowerHudIcon = this.add.image(114, 20, 'collectible_flower');
-    this.flowerHudIcon.setDisplaySize(22, 22);
+    this.flowerHudIcon = this.add.image(116, 20, 'collectible_flower');
+    this.flowerHudIcon.setDisplaySize(20, 20);
     if (this.flowerHudIcon.texture) {
       this.flowerHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
     this.hudContainer.add(this.flowerHudIcon);
 
-    this.flowerHudText = this.add.text(129, 20, '0/3', {
+    this.flowerHudText = this.add.text(130, 20, '0/3', {
       fontSize: '13px',
       fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
       fontStyle: 'bold',
@@ -520,7 +525,6 @@ export default class GameScene extends Phaser.Scene {
     if (this.durvaHudIcon.texture) {
       this.durvaHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
-    this.durvaHudIcon.setAlpha(0.5);
     this.hudContainer.add(this.durvaHudIcon);
 
     this.durvaHudText = this.add.text(198, 20, '0/3', {
@@ -539,7 +543,6 @@ export default class GameScene extends Phaser.Scene {
     if (this.bananaHudIcon.texture) {
       this.bananaHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
-    this.bananaHudIcon.setAlpha(0.5);
     this.hudContainer.add(this.bananaHudIcon);
 
     this.bananaHudText = this.add.text(268, 20, '0/3', {
@@ -552,16 +555,8 @@ export default class GameScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
     this.hudContainer.add(this.bananaHudText);
 
-    // Legacy objectiveText bridge
-    this.objectiveText = {
-      setText: (txt) => {
-        if (!this.missionBadgeText) return;
-        if (txt.includes('Mission 1')) this.missionBadgeText.setText('MISSION 1');
-        else if (txt.includes('Mission 2')) this.missionBadgeText.setText('MISSION 2');
-        else if (txt.includes('door') || txt.includes('house')) this.missionBadgeText.setText('GO TO HOUSE');
-        else if (txt.includes('Mission 3')) this.missionBadgeText.setText('MISSION 3');
-      }
-    };
+    this.objectiveText = { setText: () => {} };
+    this.bananaCounterText = { setText: () => {} };
 
     // Central Mission Banner centered dynamically
     this.bannerText = this.add.text(width / 2, height / 2, '', {
@@ -582,60 +577,26 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateHUD() {
-    if (!this.hudContainer) return;
+    if (!this.ingredientData) return;
 
-    const flowers = this.ingredientData ? this.ingredientData.flower.collected : 0;
-    const durva = this.ingredientData ? this.ingredientData.durva.collected : 0;
-    const durvaActive = this.ingredientData ? this.ingredientData.durva.active : false;
-    const bananas = this.registry.get('bananasCollected') || 0;
-
-    // Sync registry
-    this.registry.set('flowersCollected', flowers);
-    this.registry.set('durvaCollected', durva);
-
-    // Update Badge
-    if (this.currentMission === 1) {
-      this.missionBadgeText.setText('MISSION 1');
-    } else if (this.currentMission === 2) {
-      this.missionBadgeText.setText('MISSION 2');
-    } else {
-      this.missionBadgeText.setText('MISSION 3');
+    const f = this.ingredientData.flower;
+    if (this.flowerHudText) {
+      this.flowerHudText.setText(`${f.collected}/${f.required}`);
+      this.flowerHudText.setFill(f.collected >= f.required ? '#FFD700' : '#FFFFFF');
     }
 
-    // Flower HUD
-    this.flowerHudText.setText(`${flowers}/3`);
-    if (flowers >= 3) {
-      this.flowerHudText.setFill('#FFD700');
-    } else {
-      this.flowerHudText.setFill('#FFFFFF');
+    const d = this.ingredientData.durva;
+    if (this.durvaHudText) {
+      this.durvaHudText.setText(`${d.collected}/${d.required}`);
+      if (!d.active) this.durvaHudText.setFill('#888888');
+      else this.durvaHudText.setFill(d.collected >= d.required ? '#FFD700' : '#FFFFFF');
     }
 
-    // Durva HUD
-    this.durvaHudText.setText(`${durva}/3`);
-    if (durvaActive || durva > 0) {
-      this.durvaHudIcon.setAlpha(1.0);
-      if (durva >= 3) {
-        this.durvaHudText.setFill('#FFD700');
-      } else {
-        this.durvaHudText.setFill('#FFFFFF');
-      }
-    } else {
-      this.durvaHudIcon.setAlpha(0.5);
-      this.durvaHudText.setFill('#888888');
-    }
-
-    // Banana HUD
-    this.bananaHudText.setText(`${bananas}/3`);
-    if (bananas > 0) {
-      this.bananaHudIcon.setAlpha(1.0);
-      if (bananas >= 3) {
-        this.bananaHudText.setFill('#FFD700');
-      } else {
-        this.bananaHudText.setFill('#FFFFFF');
-      }
-    } else {
-      this.bananaHudIcon.setAlpha(0.5);
-      this.bananaHudText.setFill('#888888');
+    const b = this.ingredientData.banana;
+    if (this.bananaHudText) {
+      this.bananaHudText.setText(`${b.collected}/${b.required}`);
+      if (!b.active) this.bananaHudText.setFill('#888888');
+      else this.bananaHudText.setFill(b.collected >= b.required ? '#FFD700' : '#FFFFFF');
     }
   }
 
@@ -711,14 +672,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onCatOverlap() {
-    if (this.isInvulnerable || this.isPromptOpen || this.isFading || this.isDialogueOpen) {
+    if (this.isInvulnerable || this.isPromptOpen || this.isFading || this.isDialogueOpen || this.isGameOver) {
       return;
     }
     this.takeDamage();
   }
 
   takeDamage() {
-    if (this.isInvulnerable) return;
+    if (this.isInvulnerable || this.isGameOver) return;
 
     let currentHealth = this.registry.get('playerHealth');
     if (currentHealth === undefined) currentHealth = 3;
@@ -729,10 +690,187 @@ export default class GameScene extends Phaser.Scene {
     this.updateHealthHUD();
 
     if (currentHealth <= 0) {
-      this.resetCurrentMission();
+      this.triggerGameOver();
     } else {
       this.startInvulnerability();
     }
+  }
+
+  triggerGameOver() {
+    if (this.isGameOver) return;
+    this.isGameOver = true;
+
+    // 1. Freeze player and cat velocity immediately
+    if (this.player) {
+      this.player.setVelocity(0, 0);
+      if (this.player.anims) this.player.anims.stop();
+    }
+    if (this.cat && this.cat.body) {
+      this.cat.setVelocity(0, 0);
+      if (this.cat.anims) this.cat.anims.stop();
+    }
+
+    // 2. Play Mushak defeat reaction animation (hop, flash, tilt)
+    if (this.player) {
+      const startY = this.player.y;
+      this.tweens.add({
+        targets: this.player,
+        y: startY - 20,
+        angle: 15,
+        alpha: 0.6,
+        duration: 250,
+        yoyo: true,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          if (this.player) {
+            this.player.setAngle(15);
+            this.player.setAlpha(0.7);
+          }
+        }
+      });
+    }
+
+    // 3. Dark Overlay
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    if (this.gameOverOverlay) this.gameOverOverlay.destroy();
+    this.gameOverOverlay = this.add.graphics();
+    this.gameOverOverlay.setScrollFactor(0);
+    this.gameOverOverlay.setDepth(3000);
+    this.gameOverOverlay.fillStyle(0x120804, 0.75);
+    this.gameOverOverlay.fillRect(0, 0, width, height);
+    this.gameOverOverlay.setAlpha(0);
+
+    this.tweens.add({
+      targets: this.gameOverOverlay,
+      alpha: 1,
+      duration: 400,
+      ease: 'Power2'
+    });
+
+    // 4. Centered Pixel-Art Game Over Panel Container
+    if (this.gameOverContainer) this.gameOverContainer.destroy();
+    this.gameOverContainer = this.add.container(width / 2, height / 2);
+    this.gameOverContainer.setScrollFactor(0);
+    this.gameOverContainer.setDepth(3001);
+    this.gameOverContainer.setScale(0.2);
+    this.gameOverContainer.setAlpha(0);
+
+    const panelW = 340;
+    const panelH = 260;
+    const halfW = panelW / 2;
+    const halfH = panelH / 2;
+
+    const panelBg = this.add.graphics();
+    // Drop shadow
+    panelBg.fillStyle(0x000000, 0.6);
+    panelBg.fillRect(-halfW + 6, -halfH + 6, panelW, panelH);
+    // Outer dark brown border
+    panelBg.fillStyle(0x180D08, 0.98);
+    panelBg.fillRect(-halfW, -halfH, panelW, panelH);
+    // Inner dark oak fill
+    panelBg.fillStyle(0x2C1A10, 0.95);
+    panelBg.fillRect(-halfW + 4, -halfH + 4, panelW - 8, panelH - 8);
+    // Golden border stroke
+    panelBg.lineStyle(3, 0xC89632, 0.95);
+    panelBg.strokeRect(-halfW + 6, -halfH + 6, panelW - 12, panelH - 12);
+    // Inner accent line
+    panelBg.lineStyle(1, 0x785020, 0.8);
+    panelBg.strokeRect(-halfW + 10, -halfH + 10, panelW - 20, panelH - 20);
+    // Corner pixel highlights
+    panelBg.fillStyle(0xFFE89C, 1);
+    panelBg.fillRect(-halfW + 8, -halfH + 8, 4, 4);
+    panelBg.fillRect(halfW - 12, -halfH + 8, 4, 4);
+    panelBg.fillRect(-halfW + 8, halfH - 12, 4, 4);
+    panelBg.fillRect(halfW - 12, halfH - 12, 4, 4);
+
+    this.gameOverContainer.add(panelBg);
+
+    // Header Text: GAME OVER
+    const titleText = this.add.text(0, -85, 'GAME OVER', {
+      fontSize: '28px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#FF4444',
+      stroke: '#000000',
+      strokeThickness: 5
+    }).setOrigin(0.5);
+    this.gameOverContainer.add(titleText);
+
+    // Defeated Mushak Sprite Icon inside Panel
+    const mushakIcon = this.add.image(0, -25, 'mushak', 0);
+    mushakIcon.setDisplaySize(48, 48);
+    mushakIcon.setAngle(-15);
+    mushakIcon.setAlpha(0.85);
+    if (mushakIcon.texture) {
+      mushakIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.gameOverContainer.add(mushakIcon);
+
+    // Subtitle Text: Mushak Defeated
+    const subText = this.add.text(0, 15, 'Mushak Defeated!', {
+      fontSize: '16px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#D8A050',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    this.gameOverContainer.add(subText);
+
+    // Action Prompt: TRY AGAIN!
+    const tryAgainText = this.add.text(0, 65, 'TRY AGAIN!', {
+      fontSize: '22px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
+      fontStyle: 'bold',
+      fill: '#FFD700',
+      stroke: '#000000',
+      strokeThickness: 4
+    }).setOrigin(0.5);
+    this.gameOverContainer.add(tryAgainText);
+
+    // Bounce tween for TRY AGAIN text
+    this.tweens.add({
+      targets: tryAgainText,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 400,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    // Pop/Zoom Animation for Panel
+    this.tweens.add({
+      targets: this.gameOverContainer,
+      scaleX: 1,
+      scaleY: 1,
+      alpha: 1,
+      duration: 400,
+      ease: 'Back.easeOut'
+    });
+
+    // 5. Hold Game Over screen visible for ~2.2s, then fade out and reset mission
+    this.time.delayedCall(2200, () => {
+      this.tweens.add({
+        targets: [this.gameOverContainer, this.gameOverOverlay],
+        alpha: 0,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => {
+          if (this.gameOverContainer) {
+            this.gameOverContainer.destroy();
+            this.gameOverContainer = null;
+          }
+          if (this.gameOverOverlay) {
+            this.gameOverOverlay.destroy();
+            this.gameOverOverlay = null;
+          }
+          this.resetCurrentMission();
+        }
+      });
+    });
   }
 
   startInvulnerability() {
@@ -745,17 +883,20 @@ export default class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: 7, // ~1000ms total invulnerability duration
       onComplete: () => {
-        if (this.player) this.player.setAlpha(1);
+        if (this.player && !this.isGameOver) this.player.setAlpha(1);
         this.isInvulnerable = false;
       }
     });
   }
 
   resetCurrentMission() {
+    this.isGameOver = false;
     this.isInvulnerable = false;
     if (this.player) {
       this.tweens.killTweensOf(this.player);
       this.player.setAlpha(1);
+      this.player.setAngle(0);
+      this.player.setScale(0.24);
     }
 
     // Reset Mushak health to 3
@@ -893,6 +1034,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateCat() {
+    if (this.isGameOver) {
+      if (this.cat && this.cat.body) {
+        this.cat.setVelocity(0, 0);
+        this.cat.anims.stop();
+      }
+      return;
+    }
+
     if (!this.cat || !this.player || !this.catDef || !this.cat.body) return;
 
     const homePos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
@@ -1004,6 +1153,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   collectItem(player, item) {
+    if (this.isGameOver) return;
+
     const type = item.ingredientType;
     const config = this.ingredientData[type];
 
@@ -1074,7 +1225,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Enable pointer/click interaction to advance or skip dialogue
     this.input.on('pointerdown', () => {
-      if (this.isPromptOpen) return;
+      if (this.isPromptOpen || this.isGameOver) return;
       if (this.isDialogueOpen) {
         this.handleDialogueAdvance();
       }
@@ -1097,7 +1248,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   showMissionDialogue(message, onComplete) {
-    if (!this.dialogueContainer) return;
+    if (!this.dialogueContainer || this.isGameOver) return;
 
     if (this.dialogueTimer) {
       this.dialogueTimer.remove();
@@ -1340,6 +1491,14 @@ export default class GameScene extends Phaser.Scene {
     if (this.healthHudContainer) {
       this.healthHudContainer.setPosition(width - 150, 16);
     }
+    if (this.gameOverOverlay) {
+      this.gameOverOverlay.clear();
+      this.gameOverOverlay.fillStyle(0x120804, 0.75);
+      this.gameOverOverlay.fillRect(0, 0, width, height);
+    }
+    if (this.gameOverContainer) {
+      this.gameOverContainer.setPosition(width / 2, height / 2);
+    }
   }
 
   setupControls() {
@@ -1355,18 +1514,20 @@ export default class GameScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     this.enterKey.on('down', () => {
+      if (this.isGameOver) return;
       if (this.isPromptOpen) this.confirmEnterHouse();
       else if (this.isDialogueOpen) this.handleDialogueAdvance();
     });
 
     this.spaceKey.on('down', () => {
+      if (this.isGameOver) return;
       if (this.isPromptOpen) this.confirmEnterHouse();
       else if (this.isDialogueOpen) this.handleDialogueAdvance();
     });
   }
 
   update() {
-    if (this.isPromptOpen || this.isFading || this.isDialogueOpen) {
+    if (this.isPromptOpen || this.isFading || this.isDialogueOpen || this.isGameOver) {
       this.player.setVelocity(0, 0);
       if (this.cat && this.cat.body) this.cat.setVelocity(0, 0);
       return;
