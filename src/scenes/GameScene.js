@@ -59,6 +59,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 8. Enable physical collisions with solid obstacles
     this.physics.add.collider(this.player, this.obstacles);
+    this.physics.add.collider(this.cat, this.obstacles);
 
     // 9. Enable generic overlap handler for collecting ingredients
     this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
@@ -636,11 +637,11 @@ export default class GameScene extends Phaser.Scene {
       this.textures.get('collectible_durva').setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
 
-    // 1. Flower positions on map (Upper-left, Upper-right, Lower-left)
+    // 1. Flower positions on map (Upper-left rocks, Upper-right shrine top, Lower-mid-left house top)
     this.flowerDefs = [
-      { origX: 380, origY: 280 },
-      { origX: 1000, origY: 280 },
-      { origX: 440, origY: 560 }
+      { origX: 200, origY: 330 },
+      { origX: 1310, origY: 150 },
+      { origX: 630, origY: 515 }
     ];
     this.flowerDefs.forEach(def => {
       const pos = this.getMapScreenPos(def.origX, def.origY);
@@ -648,11 +649,11 @@ export default class GameScene extends Phaser.Scene {
       item.origDef = def;
     });
 
-    // 2. Durva positions on map (Shrine entrance, Mid-right, Lower-right)
+    // 2. Durva positions on map (Upper-mid-left above bench, Right-mid left of shrine steps, Lower-left of house)
     this.durvaDefs = [
-      { origX: 1350, origY: 460 },
-      { origX: 1100, origY: 600 },
-      { origX: 1420, origY: 760 }
+      { origX: 550, origY: 430 },
+      { origX: 1200, origY: 530 },
+      { origX: 520, origY: 700 }
     ];
     this.durvaDefs.forEach(def => {
       const pos = this.getMapScreenPos(def.origX, def.origY);
@@ -675,8 +676,10 @@ export default class GameScene extends Phaser.Scene {
     this.catStartX = pos.x;
     this.catStartY = pos.y;
 
+    this.cat.setCollideWorldBounds(true);
+
     if (this.cat.body) {
-      this.cat.body.setSize(this.cat.width * 0.7, this.cat.height * 0.7, true);
+      this.cat.body.setSize(this.cat.width * 0.6, this.cat.height * 0.6, true);
     }
   }
 
