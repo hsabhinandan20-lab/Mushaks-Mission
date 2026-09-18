@@ -17,6 +17,7 @@ export default class GameScene extends Phaser.Scene {
     this.load.image('collectible_flower', 'assets/flower.png');
     this.load.image('collectible_durva', 'assets/dhruv.png');
     this.load.image('collectible_banana', 'assets/banana.png');
+    this.load.image('cat', 'assets/cat.png');
   }
 
   create() {
@@ -52,6 +53,9 @@ export default class GameScene extends Phaser.Scene {
 
     // 7. Spawn collectible ingredients (Flowers and Durva)
     this.createCollectibles();
+
+    // 7b. Spawn stationary Cat NPC in the garden
+    this.createCat();
 
     // 8. Enable physical collisions with solid obstacles
     this.physics.add.collider(this.player, this.obstacles);
@@ -657,6 +661,92 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  createCat() {
+    this.catDef = { origX: 680, origY: 440 };
+    const pos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
+
+    this.cat = this.physics.add.sprite(pos.x, pos.y, 'cat');
+    this.cat.setScale(0.42);
+    if (this.cat.texture) {
+      this.cat.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    this.catState = 'IDLE';
+    this.catStartX = pos.x;
+    this.catStartY = pos.y;
+
+    if (this.cat.body) {
+      this.cat.body.setSize(this.cat.width * 0.7, this.cat.height * 0.7, true);
+    }
+  }
+
+  updateCat() {
+    if (!this.cat || !this.player || !this.catDef || !this.cat.body) return;
+
+    const homePos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
+
+    const distToPlayer = Phaser.Math.Distance.Between(
+      this.cat.x,
+      this.cat.y,
+      this.player.x,
+      this.player.y
+    );
+
+    const distToHome = Phaser.Math.Distance.Between(
+      this.cat.x,
+      this.cat.y,
+      homePos.x,
+      homePos.y
+    );
+
+    const catSpeed = 160 * homePos.scale;
+    const detectionRange = 180 * homePos.scale;
+    const stopChaseRange = 280 * homePos.scale;
+
+    switch (this.catState) {
+      case 'IDLE':
+        this.cat.setVelocity(0, 0);
+        if (distToPlayer < detectionRange) {
+          this.catState = 'CHASING';
+        }
+        break;
+
+      case 'CHASING':
+        if (distToPlayer > stopChaseRange) {
+          this.catState = 'RETURNING';
+        } else {
+          this.physics.moveToObject(this.cat, this.player, catSpeed);
+
+          if (this.player.x < this.cat.x) {
+            this.cat.setFlipX(true);
+          } else if (this.player.x > this.cat.x) {
+            this.cat.setFlipX(false);
+          }
+        }
+        break;
+
+      case 'RETURNING':
+        if (distToHome < 8 * homePos.scale) {
+          this.cat.setVelocity(0, 0);
+          this.cat.setPosition(homePos.x, homePos.y);
+          this.catState = 'IDLE';
+        } else {
+          this.physics.moveTo(this.cat, homePos.x, homePos.y, catSpeed);
+
+          if (homePos.x < this.cat.x) {
+            this.cat.setFlipX(true);
+          } else if (homePos.x > this.cat.x) {
+            this.cat.setFlipX(false);
+          }
+
+          if (distToPlayer < detectionRange) {
+            this.catState = 'CHASING';
+          }
+        }
+        break;
+    }
+  }
+
   updateCollectiblesPositions() {
     this.collectibles.getChildren().forEach(item => {
       if (item.origDef) {
@@ -1018,6 +1108,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.dialogueContainer) {
       this.updateDialogueScale();
     }
+    if (this.cat && this.catDef) {
+      const pos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
+      if (this.catState === 'IDLE') {
+        this.cat.setPosition(pos.x, pos.y);
+      }
+    }
   }
 
   setupControls() {
@@ -1046,8 +1142,11 @@ export default class GameScene extends Phaser.Scene {
   update() {
     if (this.isPromptOpen || this.isFading || this.isDialogueOpen) {
       this.player.setVelocity(0, 0);
+      if (this.cat && this.cat.body) this.cat.setVelocity(0, 0);
       return;
     }
+
+    this.updateCat();
 
     const speed = 250;
 
