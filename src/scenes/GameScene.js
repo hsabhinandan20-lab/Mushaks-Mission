@@ -17,7 +17,12 @@ export default class GameScene extends Phaser.Scene {
     this.load.image('collectible_flower', 'assets/flower.png');
     this.load.image('collectible_durva', 'assets/dhruv.png');
     this.load.image('collectible_banana', 'assets/banana.png');
-    this.load.image('cat', 'assets/cat.png');
+    this.load.spritesheet('cat-sheet', 'assets/cat-sheet.png', {
+      frameWidth: 315,
+      frameHeight: 311
+    });
+    this.load.image('heart', 'assets/heart.png');
+    this.load.image('heart_empty', 'assets/heart_empty.png');
   }
 
   create() {
@@ -46,8 +51,9 @@ export default class GameScene extends Phaser.Scene {
     // 5. Create Mushak (the player)
     this.createPlayer();
 
-    // 6. Setup ingredient data registry, top-left UI, prompt overlay & pixel dialogue UI
+    // 6. Setup ingredient data registry, top-left UI, top-right Health UI, prompt overlay & pixel dialogue UI
     this.createUI();
+    this.createHealthUI();
     this.createPromptUI();
     this.createDialogueUI();
 
@@ -60,6 +66,9 @@ export default class GameScene extends Phaser.Scene {
     // 8. Enable physical collisions with solid obstacles
     this.physics.add.collider(this.player, this.obstacles);
     this.physics.add.collider(this.cat, this.obstacles);
+
+    // 8b. Enable cat-vs-player damage overlap listener
+    this.setupCatCollision();
 
     // 9. Enable generic overlap handler for collecting ingredients
     this.physics.add.overlap(this.player, this.collectibles, this.collectItem, null, this);
@@ -84,6 +93,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.doorMarker) this.doorMarker.setVisible(true);
       if (this.objectiveText) this.objectiveText.setText('Go to the door to enter the house 🏠');
       this.updateHUD();
+      this.updateHealthHUD();
       const doorPos = this.getMapScreenPos(836, 860);
       this.player.setPosition(doorPos.x, doorPos.y);
     });
@@ -629,6 +639,167 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  createHealthUI() {
+    const width = this.scale.width;
+    if (this.registry.get('playerHealth') === undefined) {
+      this.registry.set('playerHealth', 3);
+    }
+    this.isInvulnerable = false;
+
+    // Compact Top-Right Pixel Art Health HUD Container
+    this.healthHudContainer = this.add.container(width - 150, 16);
+    this.healthHudContainer.setScrollFactor(0);
+    this.healthHudContainer.setDepth(1000);
+
+    // Pixel Art Outer Frame & Shadow
+    const hudBg = this.add.graphics();
+    // Drop shadow
+    hudBg.fillStyle(0x000000, 0.45);
+    hudBg.fillRect(3, 3, 134, 40);
+    // Outer dark chocolate border
+    hudBg.fillStyle(0x180D08, 0.95);
+    hudBg.fillRect(0, 0, 134, 40);
+    // Inner dark oak wood fill
+    hudBg.fillStyle(0x2C1A10, 0.92);
+    hudBg.fillRect(2, 2, 130, 36);
+    // Inner golden border line
+    hudBg.lineStyle(2, 0xC89632, 0.9);
+    hudBg.strokeRect(3, 3, 128, 34);
+    // Corner pixel highlights
+    hudBg.fillStyle(0xFFE89C, 1);
+    hudBg.fillRect(4, 4, 2, 2);
+    hudBg.fillRect(127, 4, 2, 2);
+    hudBg.fillRect(4, 33, 2, 2);
+    hudBg.fillRect(127, 33, 2, 2);
+    this.healthHudContainer.add(hudBg);
+
+    // 3 Heart Sprites
+    this.heartSprites = [];
+    const heartXPositions = [24, 67, 110];
+    for (let i = 0; i < 3; i++) {
+      const heart = this.add.image(heartXPositions[i], 20, 'heart');
+      heart.setDisplaySize(22, 22);
+      if (heart.texture) {
+        heart.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+      this.healthHudContainer.add(heart);
+      this.heartSprites.push(heart);
+    }
+
+    this.updateHealthHUD();
+  }
+
+  updateHealthHUD() {
+    if (!this.healthHudContainer || !this.heartSprites) return;
+    const currentHealth = this.registry.get('playerHealth') !== undefined ? this.registry.get('playerHealth') : 3;
+
+    for (let i = 0; i < 3; i++) {
+      const heart = this.heartSprites[i];
+      if (i < currentHealth) {
+        heart.setTexture('heart');
+      } else {
+        heart.setTexture('heart_empty');
+      }
+      heart.setDisplaySize(22, 22);
+    }
+  }
+
+  setupCatCollision() {
+    if (this.player && this.cat) {
+      this.physics.add.overlap(this.player, this.cat, this.onCatOverlap, null, this);
+    }
+  }
+
+  onCatOverlap() {
+    if (this.isInvulnerable || this.isPromptOpen || this.isFading || this.isDialogueOpen) {
+      return;
+    }
+    this.takeDamage();
+  }
+
+  takeDamage() {
+    if (this.isInvulnerable) return;
+
+    let currentHealth = this.registry.get('playerHealth');
+    if (currentHealth === undefined) currentHealth = 3;
+
+    currentHealth = Math.max(0, currentHealth - 1);
+    this.registry.set('playerHealth', currentHealth);
+
+    this.updateHealthHUD();
+
+    if (currentHealth <= 0) {
+      this.resetCurrentMission();
+    } else {
+      this.startInvulnerability();
+    }
+  }
+
+  startInvulnerability() {
+    this.isInvulnerable = true;
+
+    this.tweens.add({
+      targets: this.player,
+      alpha: 0.3,
+      duration: 125,
+      yoyo: true,
+      repeat: 7, // ~1000ms total invulnerability duration
+      onComplete: () => {
+        if (this.player) this.player.setAlpha(1);
+        this.isInvulnerable = false;
+      }
+    });
+  }
+
+  resetCurrentMission() {
+    this.isInvulnerable = false;
+    if (this.player) {
+      this.tweens.killTweensOf(this.player);
+      this.player.setAlpha(1);
+    }
+
+    // Reset Mushak health to 3
+    this.registry.set('playerHealth', 3);
+
+    // Reset Cat to starting spawn position and IDLE state
+    if (this.cat && this.catDef) {
+      const catPos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
+      this.cat.setPosition(catPos.x, catPos.y);
+      this.cat.setVelocity(0, 0);
+      this.cat.anims.stop();
+      this.catState = 'IDLE';
+    }
+
+    // Place Mushak at safe starting spawn position
+    const spawnPos = this.getMapScreenPos(836, 250);
+    this.player.setPosition(spawnPos.x, spawnPos.y);
+    this.player.setVelocity(0, 0);
+
+    // Reset ONLY current mission collectible progress
+    if (this.currentMission === 1) {
+      if (this.ingredientData && this.ingredientData.flower) {
+        this.ingredientData.flower.collected = 0;
+      }
+      this.collectibles.getChildren().forEach(item => {
+        if (item.ingredientType === 'flower') {
+          item.enableBody(true, item.x, item.y, true, true);
+        }
+      });
+    } else if (this.currentMission === 2) {
+      if (this.ingredientData && this.ingredientData.durva) {
+        this.ingredientData.durva.collected = 0;
+      }
+      this.collectibles.getChildren().forEach(item => {
+        if (item.ingredientType === 'durva') {
+          item.enableBody(true, item.x, item.y, true, true);
+        }
+      });
+    }
+
+    this.updateHUD();
+    this.updateHealthHUD();
+  }
+
   createCollectibles() {
     if (this.textures.exists('collectible_flower')) {
       this.textures.get('collectible_flower').setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -666,8 +837,46 @@ export default class GameScene extends Phaser.Scene {
     this.catDef = { origX: 680, origY: 440 };
     const pos = this.getMapScreenPos(this.catDef.origX, this.catDef.origY);
 
-    this.cat = this.physics.add.sprite(pos.x, pos.y, 'cat');
-    this.cat.setScale(0.42);
+    // Create 4-directional walking animations for the cat
+    if (!this.anims.exists('cat-down')) {
+      this.anims.create({
+        key: 'cat-down',
+        frames: this.anims.generateFrameNumbers('cat-sheet', { start: 0, end: 3 }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('cat-up')) {
+      this.anims.create({
+        key: 'cat-up',
+        frames: this.anims.generateFrameNumbers('cat-sheet', { start: 4, end: 7 }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('cat-left')) {
+      this.anims.create({
+        key: 'cat-left',
+        frames: this.anims.generateFrameNumbers('cat-sheet', { start: 8, end: 11 }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('cat-right')) {
+      this.anims.create({
+        key: 'cat-right',
+        frames: this.anims.generateFrameNumbers('cat-sheet', { start: 12, end: 15 }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    this.cat = this.physics.add.sprite(pos.x, pos.y, 'cat-sheet', 0);
+    this.cat.setOrigin(0.5, 0.5);
+    this.cat.setScale(0.24);
     if (this.cat.texture) {
       this.cat.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
@@ -679,7 +888,7 @@ export default class GameScene extends Phaser.Scene {
     this.cat.setCollideWorldBounds(true);
 
     if (this.cat.body) {
-      this.cat.body.setSize(this.cat.width * 0.6, this.cat.height * 0.6, true);
+      this.cat.body.setSize(this.cat.width * 0.45, this.cat.height * 0.45, true);
     }
   }
 
@@ -709,6 +918,7 @@ export default class GameScene extends Phaser.Scene {
     switch (this.catState) {
       case 'IDLE':
         this.cat.setVelocity(0, 0);
+        this.cat.anims.stop();
         if (distToPlayer < detectionRange) {
           this.catState = 'CHASING';
         }
@@ -719,12 +929,7 @@ export default class GameScene extends Phaser.Scene {
           this.catState = 'RETURNING';
         } else {
           this.physics.moveToObject(this.cat, this.player, catSpeed);
-
-          if (this.player.x < this.cat.x) {
-            this.cat.setFlipX(true);
-          } else if (this.player.x > this.cat.x) {
-            this.cat.setFlipX(false);
-          }
+          this.updateCatAnimation();
         }
         break;
 
@@ -732,21 +937,36 @@ export default class GameScene extends Phaser.Scene {
         if (distToHome < 8 * homePos.scale) {
           this.cat.setVelocity(0, 0);
           this.cat.setPosition(homePos.x, homePos.y);
+          this.cat.anims.stop();
           this.catState = 'IDLE';
         } else {
           this.physics.moveTo(this.cat, homePos.x, homePos.y, catSpeed);
-
-          if (homePos.x < this.cat.x) {
-            this.cat.setFlipX(true);
-          } else if (homePos.x > this.cat.x) {
-            this.cat.setFlipX(false);
-          }
+          this.updateCatAnimation();
 
           if (distToPlayer < detectionRange) {
             this.catState = 'CHASING';
           }
         }
         break;
+    }
+  }
+
+  updateCatAnimation() {
+    if (!this.cat || !this.cat.body) return;
+
+    const vx = this.cat.body.velocity.x;
+    const vy = this.cat.body.velocity.y;
+
+    if (Math.abs(vx) > 5 || Math.abs(vy) > 5) {
+      let animKey = 'cat-down';
+      if (Math.abs(vx) > Math.abs(vy)) {
+        animKey = vx < 0 ? 'cat-left' : 'cat-right';
+      } else {
+        animKey = vy < 0 ? 'cat-up' : 'cat-down';
+      }
+      this.cat.anims.play(animKey, true);
+    } else {
+      this.cat.anims.stop();
     }
   }
 
@@ -1116,6 +1336,9 @@ export default class GameScene extends Phaser.Scene {
       if (this.catState === 'IDLE') {
         this.cat.setPosition(pos.x, pos.y);
       }
+    }
+    if (this.healthHudContainer) {
+      this.healthHudContainer.setPosition(width - 150, 16);
     }
   }
 

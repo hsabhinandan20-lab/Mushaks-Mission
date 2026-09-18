@@ -19,6 +19,8 @@ export default class HouseScene extends Phaser.Scene {
     if (!this.textures.exists('collectible_flower')) this.load.image('collectible_flower', 'assets/flower.png');
     if (!this.textures.exists('collectible_durva')) this.load.image('collectible_durva', 'assets/dhruv.png');
     if (!this.textures.exists('collectible_banana')) this.load.image('collectible_banana', 'assets/banana.png');
+    if (!this.textures.exists('heart')) this.load.image('heart', 'assets/heart.png');
+    if (!this.textures.exists('heart_empty')) this.load.image('heart_empty', 'assets/heart_empty.png');
   }
 
   parseTiledCollisionMap() {
@@ -172,8 +174,9 @@ export default class HouseScene extends Phaser.Scene {
     // 5. Create Mushak (the player) at bottom-center entrance
     this.createPlayer();
 
-    // 6. Setup UI (Mission 3 objective & banana counter) & pixel dialogue UI
+    // 6. Setup UI (Mission 3 objective & banana counter), top-right Health UI & pixel dialogue UI
     this.createUI();
+    this.createHealthUI();
     this.createDialogueUI();
 
     // 7. Spawn 3 Banana collectibles
@@ -409,6 +412,78 @@ export default class HouseScene extends Phaser.Scene {
     this.bannerText.setVisible(false);
 
     this.updateHUD();
+    this.createHealthUI();
+  }
+
+  createHealthUI() {
+    const width = this.scale.width;
+    if (this.registry.get('playerHealth') === undefined) {
+      this.registry.set('playerHealth', 3);
+    }
+
+    // Compact Top-Right Pixel Art Health HUD Container
+    this.healthHudContainer = this.add.container(width - 150, 16);
+    this.healthHudContainer.setScrollFactor(0);
+    this.healthHudContainer.setDepth(1000);
+
+    // Pixel Art Outer Frame & Shadow
+    const hudBg = this.add.graphics();
+    hudBg.fillStyle(0x000000, 0.45);
+    hudBg.fillRect(3, 3, 134, 40);
+    hudBg.fillStyle(0x180D08, 0.95);
+    hudBg.fillRect(0, 0, 134, 40);
+    hudBg.fillStyle(0x2C1A10, 0.92);
+    hudBg.fillRect(2, 2, 130, 36);
+    hudBg.lineStyle(2, 0xC89632, 0.9);
+    hudBg.strokeRect(3, 3, 128, 34);
+    hudBg.fillStyle(0xFFE89C, 1);
+    hudBg.fillRect(4, 4, 2, 2);
+    hudBg.fillRect(127, 4, 2, 2);
+    hudBg.fillRect(4, 33, 2, 2);
+    hudBg.fillRect(127, 33, 2, 2);
+    this.healthHudContainer.add(hudBg);
+
+    this.heartSprites = [];
+    const heartXPositions = [24, 67, 110];
+    for (let i = 0; i < 3; i++) {
+      const heart = this.add.image(heartXPositions[i], 20, 'heart');
+      heart.setDisplaySize(22, 22);
+      if (heart.texture) {
+        heart.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+      this.healthHudContainer.add(heart);
+      this.heartSprites.push(heart);
+    }
+
+    this.updateHealthHUD();
+  }
+
+  updateHealthHUD() {
+    if (!this.healthHudContainer || !this.heartSprites) return;
+    const currentHealth = this.registry.get('playerHealth') !== undefined ? this.registry.get('playerHealth') : 3;
+
+    for (let i = 0; i < 3; i++) {
+      const heart = this.heartSprites[i];
+      if (i < currentHealth) {
+        heart.setTexture('heart');
+      } else {
+        heart.setTexture('heart_empty');
+      }
+      heart.setDisplaySize(22, 22);
+    }
+  }
+
+  resetCurrentMission() {
+    this.registry.set('playerHealth', 3);
+    this.bananasCollected = 0;
+    this.collectibles.getChildren().forEach(item => {
+      item.enableBody(true, item.x, item.y, true, true);
+    });
+    const spawnPos = this.getMapScreenPos(836, 800);
+    this.player.setPosition(spawnPos.x, spawnPos.y);
+    this.player.setVelocity(0, 0);
+    this.updateHUD();
+    this.updateHealthHUD();
   }
 
   updateHUD() {
@@ -762,7 +837,10 @@ export default class HouseScene extends Phaser.Scene {
       if (this.exitTrigger.body) this.exitTrigger.body.updateFromGameObject();
     }
 
-    // 6. Update Central Completion Banner & Dialogue Container
+    // 6. Update Central Completion Banner & Dialogue Container & Health HUD
+    if (this.healthHudContainer) {
+      this.healthHudContainer.setPosition(width - 150, 16);
+    }
     if (this.bannerText) {
       this.bannerText.setPosition(width / 2, height / 2);
     }
