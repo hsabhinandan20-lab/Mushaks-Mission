@@ -16,6 +16,9 @@ export default class HouseScene extends Phaser.Scene {
     this.load.text('collision_tmx', 'assets/collision.tmx');
     this.load.image('dialogueBox', 'assets/dialogue_box.png');
     this.load.image('dialogueBoy', 'assets/dialogue_boy.png');
+    if (!this.textures.exists('collectible_flower')) this.load.image('collectible_flower', 'assets/flower.png');
+    if (!this.textures.exists('collectible_durva')) this.load.image('collectible_durva', 'assets/dhruv.png');
+    if (!this.textures.exists('collectible_banana')) this.load.image('collectible_banana', 'assets/banana.png');
   }
 
   parseTiledCollisionMap() {
@@ -290,25 +293,105 @@ export default class HouseScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
 
-    // Objective Banner Text at top left
-    this.objectiveText = this.add.text(20, 20, 'Mission 3: Collect 3 Bananas 🍌', {
-      fontSize: '20px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+    // Compact Top-Left Pixel Art HUD Container
+    this.hudContainer = this.add.container(16, 16);
+    this.hudContainer.setScrollFactor(0);
+    this.hudContainer.setDepth(1000);
+
+    // 1. Pixel Art Outer Frame & Shadow
+    const hudBg = this.add.graphics();
+    hudBg.fillStyle(0x000000, 0.45);
+    hudBg.fillRect(3, 3, 336, 40);
+    hudBg.fillStyle(0x180D08, 0.95);
+    hudBg.fillRect(0, 0, 336, 40);
+    hudBg.fillStyle(0x2C1A10, 0.92);
+    hudBg.fillRect(2, 2, 332, 36);
+    hudBg.lineStyle(2, 0xC89632, 0.9);
+    hudBg.strokeRect(3, 3, 330, 34);
+    hudBg.fillStyle(0xFFE89C, 1);
+    hudBg.fillRect(4, 4, 2, 2);
+    hudBg.fillRect(329, 4, 2, 2);
+    hudBg.fillRect(4, 33, 2, 2);
+    hudBg.fillRect(329, 33, 2, 2);
+    hudBg.lineStyle(1, 0x8B5E34, 0.6);
+    hudBg.lineBetween(102, 6, 102, 33);
+    this.hudContainer.add(hudBg);
+
+    // 2. Mission Badge (Left Box)
+    const badgeBg = this.add.graphics();
+    badgeBg.fillStyle(0x5B3419, 1);
+    badgeBg.fillRect(6, 6, 90, 28);
+    badgeBg.lineStyle(1, 0xE5C158, 1);
+    badgeBg.strokeRect(6, 6, 90, 28);
+    this.hudContainer.add(badgeBg);
+
+    this.missionBadgeText = this.add.text(51, 20, 'MISSION 3', {
+      fontSize: '11px',
+      fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFF3CD',
+      stroke: '#180D08',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    this.hudContainer.add(this.missionBadgeText);
+
+    // 3. Flower Icon & Counter
+    this.flowerHudIcon = this.add.image(114, 20, 'collectible_flower');
+    this.flowerHudIcon.setDisplaySize(22, 22);
+    if (this.flowerHudIcon.texture) {
+      this.flowerHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.hudContainer.add(this.flowerHudIcon);
+
+    this.flowerHudText = this.add.text(129, 20, '3/3', {
+      fontSize: '13px',
+      fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
       fontStyle: 'bold',
       fill: '#FFD700',
-      backgroundColor: '#000000AA',
-      padding: { x: 14, y: 8 }
-    });
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0, 0.5);
+    this.hudContainer.add(this.flowerHudText);
 
-    // Counter Text
-    this.bananaCounterText = this.add.text(20, 64, `Bananas: ${this.bananasCollected}/${this.totalBananas}`, {
-      fontSize: '18px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+    // 4. Durva Icon & Counter
+    this.durvaHudIcon = this.add.image(184, 20, 'collectible_durva');
+    this.durvaHudIcon.setDisplaySize(20, 22);
+    if (this.durvaHudIcon.texture) {
+      this.durvaHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.hudContainer.add(this.durvaHudIcon);
+
+    this.durvaHudText = this.add.text(198, 20, '3/3', {
+      fontSize: '13px',
+      fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
+      fontStyle: 'bold',
+      fill: '#FFD700',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0, 0.5);
+    this.hudContainer.add(this.durvaHudText);
+
+    // 5. Banana Icon & Counter
+    this.bananaHudIcon = this.add.image(252, 20, 'collectible_banana');
+    this.bananaHudIcon.setDisplaySize(22, 20);
+    if (this.bananaHudIcon.texture) {
+      this.bananaHudIcon.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.hudContainer.add(this.bananaHudIcon);
+
+    this.bananaHudText = this.add.text(268, 20, '0/3', {
+      fontSize: '13px',
+      fontFamily: 'Consolas, "Courier New", monospace, sans-serif',
       fontStyle: 'bold',
       fill: '#FFFFFF',
-      backgroundColor: '#00000099',
-      padding: { x: 12, y: 6 }
-    });
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0, 0.5);
+    this.hudContainer.add(this.bananaHudText);
+
+    // Legacy bridges
+    this.objectiveText = { setText: () => {} };
+    this.bananaCounterText = { setText: () => {} };
 
     // Central Mission Completion Banner centered dynamically
     this.bannerText = this.add.text(width / 2, height / 2, '', {
@@ -324,30 +407,36 @@ export default class HouseScene extends Phaser.Scene {
     });
     this.bannerText.setOrigin(0.5);
     this.bannerText.setVisible(false);
+
+    this.updateHUD();
+  }
+
+  updateHUD() {
+    if (!this.hudContainer) return;
+
+    const flowers = this.registry.get('flowersCollected') !== undefined ? this.registry.get('flowersCollected') : 3;
+    const durva = this.registry.get('durvaCollected') !== undefined ? this.registry.get('durvaCollected') : 3;
+    const bananas = this.bananasCollected || 0;
+
+    this.registry.set('bananasCollected', bananas);
+
+    this.flowerHudText.setText(`${flowers}/3`);
+    this.flowerHudText.setFill(flowers >= 3 ? '#FFD700' : '#FFFFFF');
+
+    this.durvaHudText.setText(`${durva}/3`);
+    this.durvaHudText.setFill(durva >= 3 ? '#FFD700' : '#FFFFFF');
+
+    this.bananaHudText.setText(`${bananas}/3`);
+    if (bananas >= 3) {
+      this.bananaHudText.setFill('#FFD700');
+    } else {
+      this.bananaHudText.setFill('#FFFFFF');
+    }
   }
 
   createBananas() {
-    // Generate crisp 28x28 pixel banana texture
-    if (!this.textures.exists('collectible_banana')) {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-
-      // Outer peel (bright yellow curved shape)
-      g.fillStyle(0xFFD700, 1);
-      g.fillCircle(14, 14, 10);
-      g.fillStyle(0x332200, 1); // inner cut-out for crescent curve
-      g.fillCircle(10, 10, 8);
-
-      // Restore yellow body
-      g.fillStyle(0xFFEB3B, 1);
-      g.fillCircle(15, 15, 7);
-
-      // Stem / tips (green/brown)
-      g.fillStyle(0x4AF0300, 1);
-      g.fillRect(20, 6, 4, 4);
-      g.fillRect(6, 20, 4, 4);
-
-      g.generateTexture('collectible_banana', 28, 28);
-      g.destroy();
+    if (this.textures.exists('collectible_banana')) {
+      this.textures.get('collectible_banana').setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
 
     // Banana spawn coordinates on floor (walkable positions)
@@ -361,6 +450,8 @@ export default class HouseScene extends Phaser.Scene {
       const pos = this.getMapScreenPos(def.origX, def.origY);
       const banana = this.collectibles.create(pos.x, pos.y, 'collectible_banana');
       banana.origDef = def;
+      banana.setScale(0.12);
+      banana.refreshBody();
 
       // Floating idle animation
       this.tweens.add({
@@ -388,8 +479,7 @@ export default class HouseScene extends Phaser.Scene {
 
     banana.disableBody(true, true);
     this.bananasCollected += 1;
-
-    this.bananaCounterText.setText(`Bananas: ${this.bananasCollected}/${this.totalBananas}`);
+    this.updateHUD();
 
     // Polished floating pickup text animation "+1 Banana 🍌"
     const popText = this.add.text(banana.x, banana.y - 10, '+1 Banana 🍌', {
