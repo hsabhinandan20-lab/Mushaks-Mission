@@ -60,6 +60,15 @@ export default class GameScene extends Phaser.Scene {
     this.createDialogueUI();
     this.createGameOverUI();
 
+    this.time.delayedCall(500, () => {
+      this.showMissionDialogue(
+        "Help Mushak prepare for the pooja!\nCollect some flowers! 🌸",
+        () => {
+          this.objectiveText.setText('Mission 1: Collect 3 Flowers 🌸');
+        }
+      );
+    });
+
     // 7. Spawn collectible ingredients (Flowers and Durva)
     this.createCollectibles();
 
