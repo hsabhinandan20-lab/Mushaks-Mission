@@ -23,6 +23,7 @@ export default class GameScene extends Phaser.Scene {
     });
     this.load.image('heart', 'assets/heart.png');
     this.load.image('heart_empty', 'assets/heart_empty.png');
+    this.load.image('game-over-panel', 'assets/game-over-panel.png');
   }
 
   create() {
@@ -57,6 +58,7 @@ export default class GameScene extends Phaser.Scene {
     this.createHealthUI();
     this.createPromptUI();
     this.createDialogueUI();
+    this.createGameOverUI();
 
     // 7. Spawn collectible ingredients (Flowers and Durva)
     this.createCollectibles();
@@ -555,8 +557,8 @@ export default class GameScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
     this.hudContainer.add(this.bananaHudText);
 
-    this.objectiveText = { setText: () => {} };
-    this.bananaCounterText = { setText: () => {} };
+    this.objectiveText = { setText: () => { } };
+    this.bananaCounterText = { setText: () => { } };
 
     // Central Mission Banner centered dynamically
     this.bannerText = this.add.text(width / 2, height / 2, '', {
@@ -650,6 +652,57 @@ export default class GameScene extends Phaser.Scene {
     this.updateHealthHUD();
   }
 
+  createGameOverUI() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.gameOverContainer = this.add.container(
+      width / 2,
+      height / 2
+    );
+
+    this.gameOverContainer.setScrollFactor(0);
+    this.gameOverContainer.setDepth(2000);
+    this.gameOverContainer.setVisible(false);
+
+    this.gameOverPanel = this.add.image(
+      0,
+      0,
+      'game-over-panel'
+    );
+
+    // Keep pixel art crisp
+    if (this.gameOverPanel.texture) {
+      this.gameOverPanel.texture.setFilter(
+        Phaser.Textures.FilterMode.NEAREST
+      );
+    }
+
+    this.gameOverPanel.setOrigin(0.5);
+
+    this.gameOverContainer.add(this.gameOverPanel);
+
+    this.gameOverPanel.setInteractive(
+      new Phaser.Geom.Rectangle(
+        0,
+        0,
+        this.gameOverPanel.width,
+        this.gameOverPanel.height
+      ),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.retryButton = this.add.zone(0, 0, 1, 1);
+    this.retryButton.setOrigin(0.5);
+    this.retryButton.setInteractive({ useHandCursor: true });
+
+    this.gameOverContainer.add(this.retryButton);
+
+    this.retryButton.on('pointerdown', () => {
+      this.retryGame();
+    });
+  }
+
   updateHealthHUD() {
     if (!this.healthHudContainer || !this.heartSprites) return;
     const currentHealth = this.registry.get('playerHealth') !== undefined ? this.registry.get('playerHealth') : 3;
@@ -691,6 +744,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (currentHealth <= 0) {
       this.triggerGameOver();
+      this.showGameOver();
     } else {
       this.startInvulnerability();
     }
@@ -871,6 +925,127 @@ export default class GameScene extends Phaser.Scene {
         }
       });
     });
+  }
+
+  showGameOver() {
+    if (this.gameOverActive) return;
+
+    this.gameOverActive = true;
+    this.isInvulnerable = true;
+    this.isFading = true;
+
+    // Stop Mushak
+    if (this.player) {
+      this.player.setVelocity(0, 0);
+      this.player.body.moves = false;
+    }
+
+    // Stop cat
+    if (this.cat) {
+      this.cat.setVelocity(0, 0);
+      this.cat.body.moves = false;
+      this.cat.anims.stop();
+    }
+
+    if (!this.gameOverContainer || !this.gameOverPanel) return;
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    // Show the panel
+    this.gameOverContainer.setVisible(true);
+
+    // Start tiny
+    this.gameOverContainer.setScale(0.05);
+    this.gameOverContainer.setAlpha(0);
+
+    // Scale panel to fit the game screen
+    const maxWidth = width * 0.62;
+    const maxHeight = height * 0.68;
+
+    const textureWidth = this.gameOverPanel.width;
+    const textureHeight = this.gameOverPanel.height;
+
+    const scaleX = maxWidth / textureWidth;
+    const scaleY = maxHeight / textureHeight;
+
+    const panelScale = Math.min(scaleX, scaleY);
+
+    this.gameOverPanel.setScale(panelScale);
+
+    // Position RETRY hitbox relative to the actual scaled panel
+    this.retryButton.setPosition(
+      -260 * panelScale,
+      285 * panelScale
+    );
+
+    this.retryButton.setSize(
+      350 * panelScale,
+      100 * panelScale
+    );
+
+    // POP IN
+    this.tweens.add({
+      targets: this.gameOverContainer,
+      alpha: 1,
+      scale: 1.08,
+      duration: 180,
+      ease: 'Back.easeOut',
+
+      onComplete: () => {
+
+        // Small bounce back into place
+        this.tweens.add({
+          targets: this.gameOverContainer,
+          scale: 0.96,
+          duration: 80,
+          ease: 'Quad.easeOut',
+
+          onComplete: () => {
+
+            this.tweens.add({
+              targets: this.gameOverContainer,
+              scale: 1,
+              duration: 120,
+              ease: 'Quad.easeOut'
+            });
+
+          }
+        });
+
+      }
+    });
+  }
+
+  retryGame() {
+    if (!this.gameOverActive) return;
+
+    this.gameOverActive = false;
+    this.isInvulnerable = false;
+    this.isFading = false;
+
+    // Hide Game Over screen
+    if (this.gameOverContainer) {
+      this.tweens.killTweensOf(this.gameOverContainer);
+      this.gameOverContainer.setVisible(false);
+      this.gameOverContainer.setScale(1);
+      this.gameOverContainer.setAlpha(1);
+    }
+
+    // Reset player physics
+    if (this.player) {
+      this.player.body.moves = true;
+      this.player.setVelocity(0, 0);
+      this.player.setAlpha(1);
+    }
+
+    // Reset cat physics
+    if (this.cat) {
+      this.cat.body.moves = true;
+    }
+
+    // Reset the current mission
+    this.resetCurrentMission();
   }
 
   startInvulnerability() {
