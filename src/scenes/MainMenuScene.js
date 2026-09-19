@@ -144,6 +144,8 @@ export default class MainMenuScene extends Phaser.Scene {
 
     this.layoutMenu();
 
+    this.addMenuAnimations();
+
     // Fade into menu
     this.cameras.main.fadeIn(
       500,
@@ -233,6 +235,40 @@ export default class MainMenuScene extends Phaser.Scene {
       });
 
     });
+  }
+
+  addMenuAnimations() {
+
+    // Game title - very subtle floating movement
+    this.tweens.add({
+      targets: this.gameName,
+      y: '+=6',
+      duration: 1800,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1
+    });
+
+    // Play button - gentle floating movement
+    this.tweens.add({
+      targets: this.playButton,
+      y: '+=5',
+      duration: 1400,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1
+    });
+
+    // Exit button - slightly different timing
+    this.tweens.add({
+      targets: this.exitButton,
+      y: '+=5',
+      duration: 1600,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1
+    });
+
   }
 
 
