@@ -154,75 +154,47 @@ export default class GameScene extends Phaser.Scene {
     const height = this.scale.height;
 
     this.promptContainer = this.add.container(width / 2, height / 2);
-    this.promptContainer.setDepth(1000);
+    this.promptContainer.setDepth(2000);
     this.promptContainer.setVisible(false);
 
-    const boxWidth = 560;
-    const boxHeight = 240;
-
-    // Dark brown outer border
-    const outerBorder = this.add.rectangle(0, 0, boxWidth, boxHeight, 0x3E2723, 0.95);
-    outerBorder.setStrokeStyle(4, 0x8D6E63);
-
-    // Golden inner border line
-    const innerBorder = this.add.rectangle(0, 0, boxWidth - 16, boxHeight - 16, 0x1B1B1B, 0.95);
-    innerBorder.setStrokeStyle(3, 0xFFD700);
-
-    // Headline Text
-    const titleText = this.add.text(0, -65, 'ENTER THE HOUSE?', {
-      fontSize: '28px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
-      fontStyle: 'bold',
-      fill: '#FFD700',
-      stroke: '#000000',
-      strokeThickness: 4
-    }).setOrigin(0.5);
-
-    // Body Instruction Text
-    const bodyText = this.add.text(0, -15, 'Do you want to enter the house\nto collect Bananas?', {
-      fontSize: '18px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
-      fill: '#FFFFFF',
-      align: 'center',
-      lineSpacing: 6
-    }).setOrigin(0.5);
-
-    // Interactive Button: ENTER (Press Enter / Space)
-    const enterBtnBg = this.add.rectangle(-110, 55, 170, 48, 0x2E7D32, 1);
-    enterBtnBg.setStrokeStyle(2, 0x81C784);
-    enterBtnBg.setInteractive({ useHandCursor: true });
-    enterBtnBg.on('pointerdown', () => this.confirmEnterHouse());
-    enterBtnBg.on('pointerover', () => enterBtnBg.setFillStyle(0x388E3C, 1));
-    enterBtnBg.on('pointerout', () => enterBtnBg.setFillStyle(0x2E7D32, 1));
-
-    const enterBtnText = this.add.text(-110, 55, 'ENTER [⏎]', {
-      fontSize: '16px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
-      fontStyle: 'bold',
-      fill: '#FFFFFF'
-    }).setOrigin(0.5);
-
-    // Interactive Button: CANCEL
-    const cancelBtnBg = this.add.rectangle(110, 55, 140, 48, 0xC62828, 1);
-    cancelBtnBg.setStrokeStyle(2, 0xE57373);
-    cancelBtnBg.setInteractive({ useHandCursor: true });
-    cancelBtnBg.on('pointerdown', () => {
-      this.isPromptOpen = false;
-      this.promptContainer.setVisible(false);
+    // 1. Dialogue Box Image (centered)
+    this.promptBox = this.add.image(0, 0, 'dialogueBox');
+    this.promptBox.setOrigin(0.5, 0.5);
+    if (this.promptBox.texture) {
+      this.promptBox.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.promptBox.setInteractive({ useHandCursor: true });
+    this.promptBox.on('pointerdown', () => {
+      if (this.isPromptOpen && !this.isFading && !this.isGameOver) {
+        this.confirmEnterHouse();
+      }
     });
-    cancelBtnBg.on('pointerover', () => cancelBtnBg.setFillStyle(0xD32F2F, 1));
-    cancelBtnBg.on('pointerout', () => cancelBtnBg.setFillStyle(0xC62828, 1));
 
-    const cancelBtnText = this.add.text(110, 55, 'CANCEL', {
-      fontSize: '16px',
-      fontFamily: 'Segoe UI, Tahoma, sans-serif',
+    // 2. Dialogue Boy Image (left section)
+    this.promptBoy = this.add.image(-430, -5, 'dialogueBoy');
+    this.promptBoy.setOrigin(0.5, 0.5);
+    if (this.promptBoy.texture) {
+      this.promptBoy.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
+    // 3. Dialogue Text (centered inside cream right section)
+    this.promptText = this.add.text(140, -10, '', {
+      fontSize: '40px',
+      fontFamily: "'Courier New', Consolas, Monaco, monospace",
       fontStyle: 'bold',
-      fill: '#FFFFFF'
-    }).setOrigin(0.5);
+      fill: '#1a1a1a',
+      stroke: '#1a1a1a',
+      strokeThickness: 1,
+      align: 'center',
+      wordWrap: { width: 520, useAdvancedWrap: true },
+      lineSpacing: 8
+    });
+    this.promptText.setOrigin(0.5, 0.5);
 
     this.promptContainer.add([
-      outerBorder, innerBorder, titleText, bodyText,
-      enterBtnBg, enterBtnText, cancelBtnBg, cancelBtnText
+      this.promptBox,
+      this.promptBoy,
+      this.promptText
     ]);
 
     this.updatePromptScale();
@@ -236,7 +208,11 @@ export default class GameScene extends Phaser.Scene {
     this.promptContainer.setPosition(width / 2, height / 2);
 
     const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
-    this.promptContainer.setScale(targetScale);
+    this.basePromptScale = targetScale;
+
+    if (this.promptContainer.visible && !this.isPromptAnimating) {
+      this.promptContainer.setScale(targetScale);
+    }
   }
 
   onDoorOverlap() {
@@ -248,15 +224,89 @@ export default class GameScene extends Phaser.Scene {
     const idleFrames = { down: 0, up: 4, left: 8, right: 12 };
     this.player.setFrame(idleFrames[this.lastDirection || 'down']);
 
-    if (this.promptContainer) {
-      this.updatePromptScale();
-      this.promptContainer.setVisible(true);
+    this.showEnterHousePrompt();
+  }
+
+  showEnterHousePrompt() {
+    if (!this.promptContainer || this.isGameOver) return;
+
+    if (this.promptTypewriterTimer) {
+      this.promptTypewriterTimer.remove();
+      this.promptTypewriterTimer = null;
     }
+    this.tweens.killTweensOf(this.promptContainer);
+    this.tweens.killTweensOf(this.promptBoy);
+
+    this.isPromptOpen = true;
+    this.isPromptAnimating = true;
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const targetScale = Math.min(width * 0.85 / 1401, height * 0.55 / 793, 0.65);
+    this.basePromptScale = targetScale;
+
+    // 1. Container starts invisible and slightly smaller (around 0.75 scale)
+    this.promptContainer.setPosition(width / 2, height / 2);
+    this.promptContainer.setScale(targetScale * 0.75);
+    this.promptContainer.setAlpha(0);
+    this.promptContainer.setVisible(true);
+
+    // 2. Dialogue boy starts small & invisible inside left section
+    this.promptBoy.setScale(0.2);
+    this.promptBoy.setAlpha(0);
+
+    // 3. Clear text initially
+    this.promptText.setText('');
+
+    // Phase 1: Animate dialogue box zooming into normal scale (short ease-out tween)
+    this.tweens.add({
+      targets: this.promptContainer,
+      scaleX: targetScale,
+      scaleY: targetScale,
+      alpha: 1,
+      duration: 300,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Phase 2: Animate dialogue boy popping into left section
+        this.tweens.add({
+          targets: this.promptBoy,
+          scaleX: 1,
+          scaleY: 1,
+          alpha: 1,
+          duration: 250,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.isPromptAnimating = false;
+            // Phase 3: Show message using typewriter effect
+            this.startPromptTypewriter("Tap the screen or press ENTER to get in");
+          }
+        });
+      }
+    });
+  }
+
+  startPromptTypewriter(message) {
+    let charIndex = 0;
+    const totalChars = message.length;
+
+    this.promptTypewriterTimer = this.time.addEvent({
+      delay: 35,
+      repeat: totalChars - 1,
+      callback: () => {
+        charIndex++;
+        this.promptText.setText(message.substring(0, charIndex));
+      }
+    });
   }
 
   confirmEnterHouse() {
     if (!this.isPromptOpen || this.isFading || this.isGameOver) return;
     this.isFading = true;
+
+    if (this.promptTypewriterTimer) {
+      this.promptTypewriterTimer.remove();
+      this.promptTypewriterTimer = null;
+    }
 
     if (this.promptContainer) {
       this.promptContainer.setVisible(false);
@@ -298,8 +348,8 @@ export default class GameScene extends Phaser.Scene {
         }
 
         // Read gardenMapCollision objectgroup
-        const collisionGroup = xmlDoc.querySelector('objectgroup[name="GardenCollision"]') ||
-          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'GardenCollision');
+        const collisionGroup = xmlDoc.querySelector('objectgroup[name="gardenMapCollision"]') ||
+          Array.from(xmlDoc.getElementsByTagName('objectgroup')).find(g => g.getAttribute('name') === 'gardenMapCollision');
 
         if (collisionGroup) {
           const objElements = Array.from(collisionGroup.getElementsByTagName('object'));
@@ -743,7 +793,6 @@ export default class GameScene extends Phaser.Scene {
     this.updateHealthHUD();
 
     if (currentHealth <= 0) {
-      this.triggerGameOver();
       this.showGameOver();
     } else {
       this.startInvulnerability();
@@ -1398,9 +1447,13 @@ export default class GameScene extends Phaser.Scene {
     this.dialogueContainer.add([this.dialogueBox, this.dialogueBoy, this.dialogueText]);
     this.updateDialogueScale();
 
-    // Enable pointer/click interaction to advance or skip dialogue
+    // Enable pointer/click interaction to advance or skip dialogue / confirm enter house prompt
     this.input.on('pointerdown', () => {
-      if (this.isPromptOpen || this.isGameOver) return;
+      if (this.isGameOver) return;
+      if (this.isPromptOpen) {
+        this.confirmEnterHouse();
+        return;
+      }
       if (this.isDialogueOpen) {
         this.handleDialogueAdvance();
       }
