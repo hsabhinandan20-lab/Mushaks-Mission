@@ -21,6 +21,96 @@ export default class HouseScene extends Phaser.Scene {
     if (!this.textures.exists('collectible_banana')) this.load.image('collectible_banana', 'assets/banana.png');
     if (!this.textures.exists('heart')) this.load.image('heart', 'assets/heart.png');
     if (!this.textures.exists('heart_empty')) this.load.image('heart_empty', 'assets/heart_empty.png');
+
+    if (!this.textures.exists('cat-sheet')) {
+      this.load.spritesheet('cat-sheet', 'assets/cat-sheet.png', {
+        frameWidth: 315,
+        frameHeight: 311
+      });
+    }
+  }
+
+  createHouseCat() {
+
+    const catPos = this.getMapScreenPos(1150, 500);
+
+    // Create cat animations
+    if (!this.anims.exists('house-cat-down')) {
+      this.anims.create({
+        key: 'house-cat-down',
+        frames: this.anims.generateFrameNumbers('cat-sheet', {
+          start: 0,
+          end: 3
+        }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('house-cat-up')) {
+      this.anims.create({
+        key: 'house-cat-up',
+        frames: this.anims.generateFrameNumbers('cat-sheet', {
+          start: 4,
+          end: 7
+        }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('house-cat-left')) {
+      this.anims.create({
+        key: 'house-cat-left',
+        frames: this.anims.generateFrameNumbers('cat-sheet', {
+          start: 8,
+          end: 11
+        }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    if (!this.anims.exists('house-cat-right')) {
+      this.anims.create({
+        key: 'house-cat-right',
+        frames: this.anims.generateFrameNumbers('cat-sheet', {
+          start: 12,
+          end: 15
+        }),
+        frameRate: 8,
+        repeat: -1
+      });
+    }
+
+    // Create actual cat from cat-sheet
+    this.cat = this.physics.add.sprite(
+      catPos.x,
+      catPos.y,
+      'cat-sheet',
+      0
+    );
+
+    this.cat.setOrigin(0.5, 0.5);
+
+    // Same size as garden cat
+    this.cat.setScale(0.24);
+
+    this.cat.texture.setFilter(
+      Phaser.Textures.FilterMode.NEAREST
+    );
+
+    this.cat.setCollideWorldBounds(true);
+
+    // Cat collision body
+    this.cat.body.setSize(
+      this.cat.width * 0.45,
+      this.cat.height * 0.45,
+      true
+    );
+
+    // Start facing down
+    this.cat.anims.play('house-cat-down');
   }
 
   parseTiledCollisionMap() {
@@ -173,6 +263,7 @@ export default class HouseScene extends Phaser.Scene {
 
     // 5. Create Mushak (the player) at bottom-center entrance
     this.createPlayer();
+    this.createHouseCat();
 
     // 6. Setup UI (Mission 3 objective & banana counter), top-right Health UI & pixel dialogue UI
     this.createUI();
@@ -184,6 +275,7 @@ export default class HouseScene extends Phaser.Scene {
 
     // 8. Enable physical collisions with solid obstacles
     this.physics.add.collider(this.player, this.obstacles);
+    this.physics.add.collider(this.cat, this.obstacles);
 
     // 9. Enable overlap handler for collecting bananas
     this.physics.add.overlap(this.player, this.collectibles, this.collectBanana, null, this);
@@ -584,7 +676,7 @@ export default class HouseScene extends Phaser.Scene {
     if (this.bananasCollected >= this.totalBananas) {
       this.time.delayedCall(300, () => {
         if (this.bannerText) this.bannerText.setVisible(false);
-        this.showMissionDialogue("Great! You collected the Bananas!\nNow get the Coconuts!");
+        this.showMissionDialogue("Thank you for playing!\nMore missions and exciting levels are coming in a future update!");
       });
     }
   }
@@ -613,7 +705,7 @@ export default class HouseScene extends Phaser.Scene {
 
     // 3. Dialogue Text (positioned inside RIGHT portion of dialogue box frame)
     this.dialogueText = this.add.text(-130, -100, '', {
-      fontSize: '42px',
+      fontSize: '38px',
       fontFamily: "'Courier New', Consolas, Monaco, monospace",
       fontStyle: 'bold',
       fill: '#1a1a1a',
@@ -855,6 +947,52 @@ export default class HouseScene extends Phaser.Scene {
     }
   }
 
+  updateHouseCat() {
+    if (!this.cat || !this.cat.body || !this.player) return;
+
+    const catSpeed = 265;
+    const stopDistance = 55;
+
+    const dx = this.player.x - this.cat.x;
+    const dy = this.player.y - this.cat.y;
+
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Stop the cat when it gets close to Mushak
+    if (distance <= stopDistance) {
+      this.cat.setVelocity(0, 0);
+      this.cat.anims.stop();
+
+      return;
+    }
+
+    // Chase Mushak
+    const direction = new Phaser.Math.Vector2(dx, dy).normalize();
+
+    this.cat.setVelocity(
+      direction.x * catSpeed,
+      direction.y * catSpeed
+    );
+
+    // Play the correct walking animation
+    const vx = this.cat.body.velocity.x;
+    const vy = this.cat.body.velocity.y;
+
+    if (Math.abs(vx) > Math.abs(vy)) {
+      if (vx < 0) {
+        this.cat.anims.play('house-cat-left', true);
+      } else {
+        this.cat.anims.play('house-cat-right', true);
+      }
+    } else {
+      if (vy < 0) {
+        this.cat.anims.play('house-cat-up', true);
+      } else {
+        this.cat.anims.play('house-cat-down', true);
+      }
+    }
+  }
+
   setupControls() {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys({
@@ -879,8 +1017,17 @@ export default class HouseScene extends Phaser.Scene {
   update() {
     if (this.isFading || this.isDialogueOpen) {
       this.player.setVelocity(0, 0);
+
+      if (this.cat) {
+        this.cat.setVelocity(0, 0);
+        this.cat.anims.stop();
+      }
+
       return;
     }
+
+    // Make the cat continuously chase Mushak
+    this.updateHouseCat();
 
     const speed = 250;
     let vx = 0;
