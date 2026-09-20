@@ -241,6 +241,7 @@ export default class HouseScene extends Phaser.Scene {
     this.isFading = false;
     this.isPromptOpen = false;
     this.isDialogueOpen = false;
+    this.isFinalDialogue = false;
 
     // Fade camera in from black
     this.cameras.main.fadeIn(700, 0, 0, 0);
@@ -676,7 +677,12 @@ export default class HouseScene extends Phaser.Scene {
     if (this.bananasCollected >= this.totalBananas) {
       this.time.delayedCall(300, () => {
         if (this.bannerText) this.bannerText.setVisible(false);
-        this.showMissionDialogue("Thank you for playing!\nMore missions and exciting levels are coming in a future update!");
+
+        this.showMissionDialogue(
+          "Thank you for playing!\nMore levels and missions will be added in a future update.",
+          null,
+          true
+        );
       });
     }
   }
@@ -743,7 +749,7 @@ export default class HouseScene extends Phaser.Scene {
     }
   }
 
-  showMissionDialogue(message, onComplete) {
+  showMissionDialogue(message, onComplete, isFinal = false) {
     if (!this.dialogueContainer) return;
 
     if (this.dialogueTimer) {
@@ -762,6 +768,7 @@ export default class HouseScene extends Phaser.Scene {
     this.currentDialogueFullText = message;
     this.onDialogueComplete = onComplete;
     this.isTypingComplete = false;
+    this.isFinalDialogue = isFinal;
 
     if (this.player) {
       this.player.setVelocity(0, 0);
@@ -835,9 +842,16 @@ export default class HouseScene extends Phaser.Scene {
   onTypewriterComplete() {
     this.isTypingComplete = true;
 
+    // Final popup should stay permanently
+    if (this.isFinalDialogue) {
+      return;
+    }
+
+    // Normal mission dialogues auto-close after 2.5 seconds
     if (this.dialogueAutoCloseTimer) {
       this.dialogueAutoCloseTimer.remove();
     }
+
     this.dialogueAutoCloseTimer = this.time.delayedCall(2500, () => {
       this.closeMissionDialogue();
     });
@@ -887,12 +901,15 @@ export default class HouseScene extends Phaser.Scene {
       this.dialogueText.setText(this.currentDialogueFullText);
       this.onTypewriterComplete();
     } else {
+      // Do not allow the final popup to be closed
+      if (this.isFinalDialogue) return;
+
       this.closeMissionDialogue();
     }
   }
 
   handleExitDoor() {
-    if (this.isFading) return;
+    if (this.isFading || this.isFinalDialogue) return;
     this.isFading = true;
 
     this.player.setVelocity(0, 0);
