@@ -393,8 +393,8 @@ export default class HouseScene extends Phaser.Scene {
     this.hudContainer.add(this.bananaHudText);
 
     // Legacy bridges
-    this.objectiveText = { setText: () => {} };
-    this.bananaCounterText = { setText: () => {} };
+    this.objectiveText = { setText: () => { } };
+    this.bananaCounterText = { setText: () => { } };
 
     // Central Mission Completion Banner centered dynamically
     this.bannerText = this.add.text(width / 2, height / 2, '', {
@@ -553,6 +553,12 @@ export default class HouseScene extends Phaser.Scene {
     if (!banana.active) return;
 
     banana.disableBody(true, true);
+
+    this.sound.play('collect_sound', {
+      volume: 3
+    });
+
+
     this.bananasCollected += 1;
     this.updateHUD();
 

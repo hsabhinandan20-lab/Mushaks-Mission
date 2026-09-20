@@ -14,6 +14,7 @@ export default class MainMenuScene extends Phaser.Scene {
     this.load.image('game_name', 'assets/game_name.png');
     this.load.image('play_button', 'assets/play_button.png');
     this.load.image('exit_button', 'assets/exit_button.png');
+    this.load.audio('background_music', 'assets/background_music.mp3');
 
     // Mushak
     this.load.spritesheet('menu_mushak', 'assets/mushak.png', {
@@ -23,6 +24,13 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
+
+    this.backgroundMusic = this.sound.add('background_music', {
+      loop: true,
+      volume: 0.5
+    });
+
+    this.backgroundMusic.play();
 
     this.isLeaving = false;
 

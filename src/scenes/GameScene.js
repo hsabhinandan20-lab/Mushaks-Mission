@@ -24,6 +24,10 @@ export default class GameScene extends Phaser.Scene {
     this.load.image('heart', 'assets/heart.png');
     this.load.image('heart_empty', 'assets/heart_empty.png');
     this.load.image('game-over-panel', 'assets/game-over-panel.png');
+
+    this.load.audio('background_music', 'assets/background_music.mp3');
+    this.load.audio('collect_sound', 'assets/collect.mp3');
+    this.load.audio('hit_sound', 'assets/hit.mp3');
   }
 
   create() {
@@ -33,6 +37,11 @@ export default class GameScene extends Phaser.Scene {
     this.isFading = false;
     this.isDialogueOpen = false;
     this.isGameOver = false;
+
+    // Start background music
+
+
+
 
     // 1. Static physics group for solid obstacles (house, roof, shrine, trees, rocks, logs, lamps, crate, fences)
     this.obstacles = this.physics.add.staticGroup();
@@ -797,6 +806,11 @@ export default class GameScene extends Phaser.Scene {
     if (currentHealth === undefined) currentHealth = 3;
 
     currentHealth = Math.max(0, currentHealth - 1);
+
+    this.sound.play('hit_sound', {
+      volume: 0.8
+    });
+
     this.registry.set('playerHealth', currentHealth);
 
     this.updateHealthHUD();
@@ -1394,6 +1408,11 @@ export default class GameScene extends Phaser.Scene {
     if (!config || !config.active) return;
 
     item.disableBody(true, true);
+
+    this.sound.play('collect_sound', {
+      volume: 0.7
+    });
+
     config.collected += 1;
     this.updateHUD();
 
